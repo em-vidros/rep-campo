@@ -1305,6 +1305,36 @@ def api_alterar_usuario(uid):
 # Planejamento de viagem e sugestao de visitas
 # --------------------------------------------------------------------------
 
+@app.route("/api/rotas")
+@login_obrigatorio
+def api_rotas():
+    """Rotas reais da carteira, com as cidades de cada uma.
+
+    A rota pode ser dividida: o representante escolhe quais cidades entram
+    nesta viagem, porque nem toda rota se faz de uma vez.
+    """
+    db = get_db()
+    rotas = {}
+    for r in db.execute("""
+        SELECT COALESCE(NULLIF(TRIM(rota),''),'Sem rota') AS rota,
+               COALESCE(NULLIF(TRIM(cidade),''),'Sem cidade') AS cidade,
+               COUNT(*) n, ROUND(SUM(vol_12m)) vol
+          FROM clientes WHERE ativo = 1
+         GROUP BY rota, cidade ORDER BY rota, n DESC"""):
+        nome = r["rota"]
+        # "Sem Rota" e "sem Rota" sao a mesma coisa na carteira
+        if nome.lower() in ("sem rota", "sem rota "):
+            nome = "Sem rota"
+        d = rotas.setdefault(nome, {"rota": nome, "cidades": [], "clientes": 0, "vol_12m": 0})
+        d["cidades"].append({"cidade": r["cidade"], "clientes": r["n"],
+                             "vol_12m": r["vol"] or 0})
+        d["clientes"] += r["n"]
+        d["vol_12m"] += r["vol"] or 0
+
+    lista = sorted(rotas.values(), key=lambda x: -x["vol_12m"])
+    return jsonify({"rotas": lista, "total_clientes": sum(x["clientes"] for x in lista)})
+
+
 @app.route("/api/sugestao")
 @login_obrigatorio
 def api_sugestao():
@@ -1319,13 +1349,22 @@ def api_sugestao():
     rota = (request.args.get("rota") or "").strip()
     limite = min(int(request.args.get("limite", 40)), 200)
 
+    cidades = [x.strip() for x in (request.args.get("cidades") or "").split("|") if x.strip()]
+
     filtros, args = ["c.ativo = 1"], []
-    if municipio:
+    if cidades:
+        marcas = ",".join("?" * len(cidades))
+        filtros.append("COALESCE(NULLIF(TRIM(c.cidade),''),'Sem cidade') IN (%s)" % marcas)
+        args += cidades
+    elif municipio:
         filtros.append("c.cidade LIKE ?")
         args.append("%%%s%%" % municipio)
     if rota:
-        filtros.append("c.rota LIKE ?")
-        args.append("%%%s%%" % rota)
+        if rota == "Sem rota":
+            filtros.append("(c.rota IS NULL OR TRIM(c.rota) = '' OR LOWER(TRIM(c.rota)) = 'sem rota')")
+        else:
+            filtros.append("TRIM(c.rota) = ?")
+            args.append(rota)
 
     rows = db.execute("""
         SELECT c.codigo, c.nome, c.cidade, c.rota, c.curva, c.vol_12m, c.vendedor,

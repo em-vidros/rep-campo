@@ -7,6 +7,7 @@ const brl = v => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency:
 const dataBR = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
 
 let sugeridos = [], escolhidos = new Set();
+let ROTAS = [], cidadesMarcadas = new Set();
 
 function msg(t, erro) {
   $('msg').innerHTML = `<div class="alerta ${erro ? 'erro' : 'info'}">${esc(t)}</div>`;
@@ -19,20 +20,73 @@ document.querySelectorAll('.aba').forEach(b => b.onclick = () => {
   b.classList.add('ativa');
   $('tela-' + b.dataset.tela).classList.add('ativa');
   if (b.dataset.tela === 'lista') carregarViagens();
+carregarRotas();
 });
+
+/* ---------------------------------------------------------------- rotas */
+async function carregarRotas() {
+  const r = await fetch('/api/rotas');
+  if (!r.ok) return;
+  const d = await r.json();
+  ROTAS = d.rotas;
+  $('v-rota').innerHTML = '<option value="">selecione a rota</option>' +
+    ROTAS.map(x => `<option value="${esc(x.rota)}">${esc(x.rota)} — ${x.clientes} clientes · ${x.cidades.length} cidade(s)</option>`).join('');
+}
+
+$('v-rota').onchange = () => {
+  const rota = ROTAS.find(x => x.rota === $('v-rota').value);
+  cidadesMarcadas = new Set();
+  $('box-cidades').classList.toggle('oculto', !rota);
+  if (!rota) return desenharChips(null);
+  rota.cidades.forEach(c => cidadesMarcadas.add(c.cidade));   // começa com tudo
+  desenharChips(rota);
+};
+
+function desenharChips(rota) {
+  if (!rota) { $('chips-cidades').innerHTML = ''; return; }
+  $('chips-cidades').innerHTML = rota.cidades.map(c => `
+    <button type="button" class="chip ${cidadesMarcadas.has(c.cidade) ? 'on' : ''}"
+            data-cidade="${esc(c.cidade)}">
+      ${esc(c.cidade)} <span>${c.clientes}</span>
+    </button>`).join('');
+  $('chips-cidades').querySelectorAll('.chip').forEach(b => b.onclick = () => {
+    const cid = b.dataset.cidade;
+    cidadesMarcadas.has(cid) ? cidadesMarcadas.delete(cid) : cidadesMarcadas.add(cid);
+    desenharChips(rota);
+  });
+  const total = rota.cidades.filter(c => cidadesMarcadas.has(c.cidade))
+    .reduce((s, c) => s + c.clientes, 0);
+  $('resumo-cidades').textContent =
+    `${cidadesMarcadas.size} de ${rota.cidades.length} cidade(s) · ${total} cliente(s) na carteira`;
+}
+
+$('btn-todas').onclick = () => {
+  const rota = ROTAS.find(x => x.rota === $('v-rota').value);
+  if (!rota) return;
+  rota.cidades.forEach(c => cidadesMarcadas.add(c.cidade));
+  desenharChips(rota);
+};
+$('btn-nenhuma').onclick = () => {
+  const rota = ROTAS.find(x => x.rota === $('v-rota').value);
+  cidadesMarcadas = new Set();
+  desenharChips(rota);
+};
 
 /* ------------------------------------------------------------- sugestao */
 async function buscarSugestao() {
+  if (!cidadesMarcadas.size) {
+    $('aviso-filtro').textContent = 'Escolha a rota e marque ao menos uma cidade.';
+    return;
+  }
+  $('aviso-filtro').textContent = '';
   const q = new URLSearchParams();
-  if ($('s-municipio').value.trim()) q.set('municipio', $('s-municipio').value.trim());
-  if ($('s-rota').value.trim()) q.set('rota', $('s-rota').value.trim());
+  q.set('rota', $('v-rota').value);
+  q.set('cidades', [...cidadesMarcadas].join('|'));
+  q.set('limite', '120');
   const r = await fetch('/api/sugestao?' + q);
   if (!r.ok) return msg('Não foi possível buscar.', true);
   const d = await r.json();
   sugeridos = d.clientes;
-
-  $('s-lista-mun').innerHTML = d.municipios.map(m => `<option value="${esc(m)}">`).join('');
-  $('s-lista-rota').innerHTML = d.rotas.map(m => `<option value="${esc(m)}">`).join('');
 
   $('lista-sugestao').innerHTML = sugeridos.map((c, i) => `
     <div class="ficha sugestao ${escolhidos.has(c.codigo) ? 'escolhido' : ''}" data-i="${i}">
@@ -76,7 +130,7 @@ $('btn-criar').onclick = async () => {
   const r = await fetch('/api/viagens', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      nome, rota: $('v-rota').value.trim(), inicio: $('v-inicio').value,
+      nome, rota: $('v-rota').value, inicio: $('v-inicio').value,
       fim: $('v-fim').value, observacao: $('v-obs').value.trim() }) });
   const j = await r.json();
   if (!r.ok) return msg('Não foi possível criar a viagem.', true);
@@ -87,7 +141,9 @@ $('btn-criar').onclick = async () => {
     body: JSON.stringify({ clientes: escolha }) });
 
   msg('Viagem criada com ' + escolha.length + ' cliente(s).');
-  escolhidos = new Set(); $('form-viagem').reset(); $('lista-sugestao').innerHTML = '';
+  escolhidos = new Set(); cidadesMarcadas = new Set();
+  $('form-viagem').reset(); $('lista-sugestao').innerHTML = '';
+  $('box-cidades').classList.add('oculto');
   atualizarRodape();
   document.querySelector('.aba[data-tela="lista"]').click();
 };
@@ -146,3 +202,4 @@ async function carregarViagens() {
 }
 
 carregarViagens();
+carregarRotas();

@@ -39,8 +39,21 @@
     <form id="form-viagem" class="cartao-form">
       <h3 style="margin-top:0">1. Dados da viagem</h3>
       <div class="dupla">
-        <label>Nome<input id="v-nome" required placeholder="ex: Rota Pindaré — setembro"></label>
-        <label>Rota ou região<input id="v-rota" placeholder="ex: eixo Pindaré"></label>
+        <label>Nome<input id="v-nome" required placeholder="ex: Rota Balsas — setembro"></label>
+        <label>Rota
+          <select id="v-rota"><option value="">selecione a rota</option></select>
+        </label>
+      </div>
+      <div id="box-cidades" class="oculto">
+        <label>Cidades desta viagem
+          <small class="dica">A rota pode ser dividida — marque só as cidades que entram agora.</small>
+        </label>
+        <div id="chips-cidades" class="chips"></div>
+        <div class="acoes-chips">
+          <button type="button" class="mini" id="btn-todas">marcar todas</button>
+          <button type="button" class="mini" id="btn-nenhuma">limpar</button>
+          <span id="resumo-cidades" class="dica"></span>
+        </div>
       </div>
       <div class="dupla">
         <label>Saída<input id="v-inicio" type="date"></label>
@@ -51,11 +64,8 @@
 
     <h3 style="margin-top:24px">2. Quem visitar</h3>
     <div class="barra-filtros">
-      <label>Município<input id="s-municipio" placeholder="filtrar" list="s-lista-mun">
-        <datalist id="s-lista-mun"></datalist></label>
-      <label>Rota<input id="s-rota" placeholder="filtrar" list="s-lista-rota">
-        <datalist id="s-lista-rota"></datalist></label>
-      <button id="s-buscar" class="btn-sec" type="button">Buscar sugestões</button>
+      <button id="s-buscar" class="btn-sec" type="button">Buscar sugestões nas cidades marcadas</button>
+      <span id="aviso-filtro" class="dica"></span>
     </div>
     <p class="explica">Ordenado por prioridade: <b>ocorrência em aberto</b> pesa mais,
       depois <b>nota baixa em pesquisa</b>, <b>nunca visitado</b>, <b>ciclo vencido</b>,

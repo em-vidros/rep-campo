@@ -158,3 +158,12 @@ tbody tr.nunca{background:#fdecea}
 .item-roteiro.feito{opacity:.62}
 .item-roteiro.feito .marca-visita{color:var(--ok)}
 @media (max-width:700px){ .rodape-plano{flex-direction:column;margin:0 -12px} .rodape-plano .btn{width:100%} }
+
+/* chips de cidade (dividir a rota) */
+.chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:8px}
+.chip{border:1px solid var(--borda);background:#fff;border-radius:20px;
+  padding:7px 13px;font-size:.82rem;color:var(--cinza);display:flex;gap:6px;align-items:center}
+.chip span{font-size:.68rem;background:#eef2f0;border-radius:10px;padding:1px 6px;color:var(--cinza)}
+.chip.on{background:var(--verde);color:#fff;border-color:var(--verde)}
+.chip.on span{background:rgba(255,255,255,.22);color:#fff}
+.acoes-chips{display:flex;gap:9px;align-items:center;margin-top:10px;flex-wrap:wrap}
