@@ -130,8 +130,21 @@ function montarCampos(tipo) {
     } else if (c.tipo === 'itens') {
       el = document.createElement('div');
       el.className = 'itens-preco';
-      el.innerHTML =
-        '<div class="dupla"><input placeholder="item" data-i-nome><input placeholder="R$" inputmode="decimal" data-i-preco></div>'.repeat(3) +
+      // cesta fixa: os mesmos itens todo mes, senao nao da para comparar
+      let grupoAtual = '';
+      const linhas = (CFG.cesta_preco || []).map(x => {
+        const cab = x.grupo !== grupoAtual
+          ? `<div class="grupo-cesta">${esc(x.grupo)}</div>` : '';
+        grupoAtual = x.grupo;
+        return cab + `<div class="linha-item">
+          <span class="nome-item">${esc(x.item)}</span>
+          <input placeholder="R$" inputmode="decimal" data-i-preco
+                 data-i-nome-fixo="${esc(x.item)}">
+        </div>`;
+      }).join('');
+      el.innerHTML = linhas +
+        '<div class="grupo-cesta">Outros itens</div>' +
+        '<div class="dupla"><input placeholder="item" data-i-nome><input placeholder="R$" inputmode="decimal" data-i-preco></div>'.repeat(2) +
         '<button type="button" class="mini" id="btn-mais-item">+ item</button>';
     } else {
       el = document.createElement('input');
@@ -161,6 +174,7 @@ function montarCampos(tipo) {
    Um toque obrigatorio (a nota); o resto e opcional, para nao passar de 2 min. */
 function montarExperiencia(tipo) {
   const box = $('bloco-experiencia');
+  if (tipo === 'voz') return montarPesquisaCompleta(box);
   const par = (CFG.pergunta_experiencia || {})[tipo] ||
     ['Relacionamento geral', 'Como esta sendo a experiencia com a gente?'];
   const [etapaPadrao, pergunta] = par;
@@ -199,6 +213,82 @@ function montarExperiencia(tipo) {
   ajustarMetrica();
 }
 
+/* Voz do Cliente E a pesquisa: avalia os processos da empresa, nao so uma
+   etapa. NPS obrigatorio; cada processo e opcional (pode nao se aplicar). */
+function montarPesquisaCompleta(box) {
+  const linhas = (CFG.processos_csat || []).map((proc, i) => `
+    <div class="proc">
+      <div class="proc-nome">${esc(proc)}</div>
+      <div class="proc-notas" data-proc="${esc(proc)}">
+        ${Array.from({ length: 11 }, (_, n) =>
+          `<button type="button" class="nota-min" data-n="${n}">${n}</button>`).join('')}
+        <button type="button" class="nota-min pular" data-n="">n/a</button>
+      </div>
+    </div>`).join('');
+
+  box.innerHTML = `
+    <fieldset class="bloco-exp">
+      <legend>Pesquisa de satisfação <b class="obrig">NPS obrigatório</b></legend>
+
+      <small class="dica"><b>De 0 a 10, o quanto recomendaria a EM Vidros?</b></small>
+      <div class="notas" id="notas-exp">
+        ${Array.from({ length: 11 }, (_, n) =>
+          `<button type="button" class="nota" data-nota="${n}">${n}</button>`).join('')}
+      </div>
+      <div class="reguas"><span>0 = não recomendaria</span><span>10 = com certeza</span></div>
+      <div id="aviso-nps" class="aviso-curto oculto"></div>
+      <label>Motivo da nota (palavras do cliente)
+        <textarea id="f-exp-comentario" rows="2" placeholder="o que ele falou, do jeito que falou"></textarea>
+      </label>
+
+      <div class="titulo-proc">Satisfação com cada processo
+        <small class="dica">0 = muito insatisfeito · 10 = muito satisfeito · toque em
+          <b>n/a</b> no que não se aplica</small></div>
+      ${linhas}
+
+      <label>Observação geral da pesquisa (opcional)
+        <textarea id="f-obs-pesquisa" rows="2" placeholder="algo que ele falou e não cabe nas notas"></textarea>
+      </label>
+      <input type="hidden" id="f-exp-etapa" value="Relacionamento geral">
+    </fieldset>`;
+
+  box.querySelectorAll('#notas-exp .nota').forEach(b => b.onclick = () => {
+    box.querySelectorAll('#notas-exp .nota').forEach(x => x.classList.remove('escolhida'));
+    b.classList.add('escolhida');
+    box.dataset.nota = b.dataset.nota;
+    avisarFadigaNps();
+  });
+  box.querySelectorAll('.proc-notas').forEach(linha =>
+    linha.querySelectorAll('.nota-min').forEach(b => b.onclick = () => {
+      linha.querySelectorAll('.nota-min').forEach(x => x.classList.remove('escolhida'));
+      b.classList.add('escolhida');
+      linha.dataset.nota = b.dataset.n;
+    }));
+  delete box.dataset.nota;
+}
+
+/* Junta as respostas: nas visitas comuns e uma; na Voz do Cliente sao varias. */
+function lerExperiencia() {
+  const box = $('bloco-experiencia');
+  const geral = box.dataset.nota;
+  const comentario = ($('f-exp-comentario') || {}).value || null;
+  const respostas = [];
+  if (geral !== undefined && geral !== '') {
+    respostas.push({
+      etapa: ($('f-exp-etapa') || {}).value || 'Relacionamento geral',
+      nota: Number(geral), comentario,
+    });
+  }
+  box.querySelectorAll('.proc-notas').forEach(linha => {
+    if (!linha.dataset.nota) return;              // n/a ou nao respondido
+    respostas.push({ etapa: linha.dataset.proc, nota: Number(linha.dataset.nota) });
+  });
+  const obs = ($('f-obs-pesquisa') || {}).value;
+  if (obs && respostas.length) respostas[0].comentario =
+    [respostas[0].comentario, obs].filter(Boolean).join(' | ');
+  return respostas;
+}
+
 /* A regua e sempre 0-10, mas o que ela significa muda com a etapa. */
 const TEXTO_METRICA = {
   nps:  { nome: 'NPS', min: '0 = nao recomendaria', max: '10 = recomendaria com certeza',
@@ -218,8 +308,14 @@ function ajustarMetrica() {
   $('txt-metrica').textContent = t.dica;
 
   // NPS cansa: avisa se este cliente ja respondeu ha pouco tempo
+  avisarFadigaNps(metrica);
+}
+
+function avisarFadigaNps(metrica) {
   const alerta = $('aviso-nps');
+  if (!alerta) return;
   alerta.classList.add('oculto');
+  if (metrica === undefined) metrica = 'nps';
   if (metrica !== 'nps') return;
   const c = CFG.clientes.find(x => x.nome === ($('f-cliente').value || '').trim());
   const quando = c && (CFG.ultimo_nps || {})[c.codigo];
@@ -233,16 +329,88 @@ function ajustarMetrica() {
   }
 }
 
+/* Evidencias extras: proposta, print de conversa, foto do material do
+   concorrente. Varias por ficha, cada uma com o que e. */
+let anexos = [];
+
+function montarEvidencias(tipo) {
+  const box = $('bloco-evidencias');
+  const foco = tipo === 'preco'
+    ? 'Proposta do concorrente, conversa do cliente com ele, foto do material'
+    : 'Fotos e documentos que comprovem o que foi tratado';
+  box.innerHTML = `
+    <fieldset class="bloco-evid">
+      <legend>Evidências <b class="obrig">opcional</b></legend>
+      <small class="dica">${esc(foco)}. Até ${CFG.max_anexos || 8}.</small>
+      <input type="file" id="f-anexo" accept="image/*" multiple>
+      <div id="lista-anexos" class="lista-anexos"></div>
+    </fieldset>`;
+  anexos = [];
+  $('f-anexo').addEventListener('change', ev => {
+    [...ev.target.files].forEach(arq => comprimir(arq, dataUrl => {
+      if (anexos.length >= (CFG.max_anexos || 8)) return;
+      anexos.push({ foto: dataUrl, tipo: (CFG.tipos_evidencia || [])[0], descricao: '' });
+      desenharAnexos();
+    }));
+    ev.target.value = '';
+  });
+}
+
+function desenharAnexos() {
+  const lista = $('lista-anexos');
+  lista.innerHTML = anexos.map((a, i) => `
+    <div class="anexo">
+      <img src="${a.foto}" alt="evidência ${i + 1}">
+      <div class="anexo-campos">
+        <select data-tipo="${i}">
+          ${(CFG.tipos_evidencia || []).map(t =>
+            `<option value="${esc(t)}"${t === a.tipo ? ' selected' : ''}>${esc(t)}</option>`).join('')}
+        </select>
+        <input placeholder="observação (opcional)" data-desc="${i}" value="${esc(a.descricao)}">
+      </div>
+      <button type="button" class="mini" data-remover="${i}">remover</button>
+    </div>`).join('');
+  lista.querySelectorAll('[data-tipo]').forEach(el =>
+    el.onchange = () => { anexos[el.dataset.tipo].tipo = el.value; });
+  lista.querySelectorAll('[data-desc]').forEach(el =>
+    el.oninput = () => { anexos[el.dataset.desc].descricao = el.value; });
+  lista.querySelectorAll('[data-remover]').forEach(b =>
+    b.onclick = () => { anexos.splice(Number(b.dataset.remover), 1); desenharAnexos(); });
+}
+
+/* compressao no aparelho - o servidor nao processa imagem */
+function comprimir(arq, pronto) {
+  const leitor = new FileReader();
+  leitor.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 1280;
+      let { width: w, height: h } = img;
+      if (w > max || h > max) { const r = Math.min(max / w, max / h); w = Math.round(w * r); h = Math.round(h * r); }
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      pronto(cv.toDataURL('image/jpeg', 0.7));
+    };
+    img.src = e.target.result;
+  };
+  leitor.readAsDataURL(arq);
+}
+
 function lerCampos(tipo) {
   const extra = {};
   (CAMPOS[tipo] || []).forEach(c => {
     const el = $('x-' + c.id);
     if (!el) return;
     if (c.tipo === 'itens') {
-      const linhas = [...el.querySelectorAll('.dupla')].map(d => ({
+      const fixos = [...el.querySelectorAll('[data-i-nome-fixo]')].map(i => ({
+        item: i.dataset.iNomeFixo, preco: i.value.trim(), cesta: true,
+      })).filter(x => x.preco);
+      const livres = [...el.querySelectorAll('.dupla')].map(d => ({
         item: d.querySelector('[data-i-nome]').value.trim(),
         preco: d.querySelector('[data-i-preco]').value.trim(),
-      })).filter(x => x.item);
+      })).filter(x => x.item && x.preco);
+      const linhas = fixos.concat(livres);
       if (linhas.length) extra[c.id] = linhas;
     } else if (el.value && el.value.trim()) {
       extra[c.id] = el.value.trim();
@@ -279,23 +447,11 @@ function pegarGeo() {
 $('f-foto').addEventListener('change', ev => {
   const arq = ev.target.files && ev.target.files[0];
   if (!arq) return;
-  const leitor = new FileReader();
-  leitor.onload = e => {
-    const img = new Image();
-    img.onload = () => {
-      const max = 1280;
-      let { width: w, height: h } = img;
-      if (w > max || h > max) { const r = Math.min(max / w, max / h); w = Math.round(w * r); h = Math.round(h * r); }
-      const cv = document.createElement('canvas');
-      cv.width = w; cv.height = h;
-      cv.getContext('2d').drawImage(img, 0, 0, w, h);
-      fotoDataUrl = cv.toDataURL('image/jpeg', 0.7);
-      $('img-previa').src = fotoDataUrl;
-      $('previa-foto').classList.remove('oculto');
-    };
-    img.src = e.target.result;
-  };
-  leitor.readAsDataURL(arq);
+  comprimir(arq, dataUrl => {
+    fotoDataUrl = dataUrl;
+    $('img-previa').src = dataUrl;
+    $('previa-foto').classList.remove('oculto');
+  });
 });
 
 /* ------------------------------------------------------------------- salvar */
@@ -351,10 +507,8 @@ $('form-ficha').addEventListener('submit', async ev => {
     criado_em_disp: new Date().toISOString(),
     foto: fotoDataUrl, extra: lerCampos(tipoAtual),
     problema_tipo: (document.getElementById('x-problema_tipo') || {}).value || null,
-    exp_etapa: ($('f-exp-etapa') || {}).value || null,
-    exp_nota: notaExp === undefined ? null : Number(notaExp),
-    exp_comentario: ($('f-exp-comentario') || {}).value || null,
-    exp_metrica: (CFG.metrica_por_etapa || {})[($('f-exp-etapa') || {}).value] || null,
+    experiencia: lerExperiencia(),
+    anexos: anexos,
     app_versao: VERSAO,
   };
 
@@ -369,6 +523,7 @@ $('form-ficha').addEventListener('submit', async ev => {
 function limparForm() {
   $('form-ficha').reset();
   fotoDataUrl = null;
+  anexos = [];
   $('previa-foto').classList.add('oculto');
   $('campos-tipo').innerHTML = '';
   $('form-ficha').classList.add('oculto');
@@ -459,6 +614,7 @@ document.querySelectorAll('.cartao-tipo').forEach(b => b.onclick = () => {
   $('rotulo-tipo').textContent = b.querySelector('b').textContent;
   montarCampos(tipoAtual);
   montarExperiencia(tipoAtual);
+  montarEvidencias(tipoAtual);
   $('passo-tipo').classList.add('oculto');
   $('form-ficha').classList.remove('oculto');
   pegarGeo();

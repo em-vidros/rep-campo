@@ -154,3 +154,34 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 }
 .espiar:hover,.espiar:focus{opacity:1;background:rgba(0,0,0,.05)}
 .espiar:focus-visible{outline:2px solid var(--verde-claro)}
+
+/* ---- cesta fixa da pesquisa de preco ---- */
+.grupo-cesta{font-size:.7rem;text-transform:uppercase;letter-spacing:.4px;
+  color:var(--verde);font-weight:700;margin:12px 0 5px;padding-bottom:3px;
+  border-bottom:1px solid var(--borda)}
+.linha-item{display:grid;grid-template-columns:1fr 110px;gap:8px;align-items:center;margin-bottom:6px}
+.nome-item{font-size:.88rem}
+.linha-item input{margin-top:0}
+
+/* ---- evidencias ---- */
+.bloco-evid{border-color:var(--verde-claro)}
+.bloco-evid legend{color:var(--verde-claro)}
+.lista-anexos{display:flex;flex-direction:column;gap:10px;margin-top:10px}
+.anexo{display:grid;grid-template-columns:64px 1fr auto;gap:9px;align-items:center;
+  background:#f6f7f6;border:1px solid var(--borda);border-radius:10px;padding:8px}
+.anexo img{width:64px;height:64px;object-fit:cover;border-radius:7px}
+.anexo-campos{display:flex;flex-direction:column;gap:5px;min-width:0}
+.anexo-campos select,.anexo-campos input{margin-top:0;padding:7px 9px;font-size:.8rem}
+
+/* ---- pesquisa completa (Voz do Cliente) ---- */
+.titulo-proc{font-size:.8rem;font-weight:700;color:var(--verde);margin:18px 0 8px;
+  padding-top:12px;border-top:1px solid var(--borda)}
+.titulo-proc .dica{font-weight:400;margin-top:3px}
+.proc{margin-bottom:11px}
+.proc-nome{font-size:.83rem;margin-bottom:4px;color:var(--texto)}
+.proc-notas{display:grid;grid-template-columns:repeat(12,1fr);gap:2px}
+.nota-min{padding:7px 0;border:1px solid var(--borda);background:#fff;border-radius:5px;
+  font-size:.7rem;font-weight:600;color:var(--cinza)}
+.nota-min.pular{font-size:.62rem;color:var(--cinza);background:#f0eeea}
+.nota-min.escolhida{background:var(--verde);color:#fff;border-color:var(--verde)}
+@media (max-width:420px){ .proc-notas{grid-template-columns:repeat(6,1fr)} }

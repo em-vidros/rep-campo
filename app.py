@@ -102,6 +102,7 @@ METRICA_POR_ETAPA = {
     "Producao e acabamento": "csat",
     "Entrega": "csat",
     "Qualidade do produto": "csat",
+    "Atendimento comercial": "csat",
 }
 
 # Corte de cada metrica na regua unica de 0 a 10 (o REP nao decora escalas).
@@ -119,6 +120,45 @@ PERGUNTA_EXPERIENCIA = {
     "voz":          ("Relacionamento geral", "De 0 a 10, o quanto recomendaria a EM Vidros?"),
     "evento":       ("Relacionamento geral", "Como a EM Vidros e vista no mercado hoje?"),
 }
+
+# Cesta fixa do radar de preco (definida pelo Ricardo em 02/09/2026).
+# Fixa de proposito: se cada mes vier item diferente, nao da para comparar
+# mes a mes - que e justamente o objetivo do radar.
+CESTA_PRECO = [
+    {"grupo": "Engenharia", "item": "Inc 6 Eng"},
+    {"grupo": "Engenharia", "item": "Inc 8 Eng"},
+    {"grupo": "Engenharia", "item": "Inc 10 Eng"},
+    {"grupo": "Engenharia", "item": "Fume/Verde 8 Eng"},
+    {"grupo": "Padrao", "item": "Box Inc 8 pad"},
+    {"grupo": "Padrao", "item": "Jan Inc 8 pad"},
+    {"grupo": "Padrao", "item": "Porta Inc 8 pad"},
+    {"grupo": "Padrao", "item": "Box Fume/Verde 8 pad"},
+    {"grupo": "Padrao", "item": "Jan Fume/Verde 8 pad"},
+    {"grupo": "Padrao", "item": "Porta Fume/Verde 8 pad"},
+]
+
+# Tipos de evidencia que o REP pode anexar (varias por ficha).
+TIPOS_EVIDENCIA = [
+    "Proposta ou orcamento do concorrente",
+    "Conversa do cliente com o concorrente",
+    "Material ou produto do concorrente",
+    "Tabela de preco",
+    "Foto do local ou da peca",
+    "Outro",
+]
+
+# A visita "Voz do cliente" E a pesquisa - por isso avalia os processos da
+# empresa inteiros, e nao so uma etapa como as demais visitas.
+PROCESSOS_CSAT = [
+    "Cotacao e orcamento",
+    "Preco e condicao",
+    "Prazo prometido",
+    "Producao e acabamento",
+    "Qualidade do produto",
+    "Entrega",
+    "Pos-venda e resolucao de problema",
+    "Atendimento comercial",
+]
 
 # NPS cansa se perguntado toda visita. CSAT e CES podem ser sempre.
 DIAS_MINIMOS_ENTRE_NPS = 90
@@ -226,6 +266,28 @@ SCHEMA = {
             ativo INTEGER NOT NULL DEFAULT 1,
             atualizado_em TEXT
         )""",
+    "experiencia": """
+        CREATE TABLE IF NOT EXISTS experiencia (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ficha_uuid TEXT NOT NULL,
+            cliente_codigo TEXT,
+            cliente_nome TEXT,
+            etapa TEXT NOT NULL,
+            metrica TEXT NOT NULL,
+            nota INTEGER NOT NULL,
+            comentario TEXT,
+            registrado_em TEXT NOT NULL,
+            usuario_login TEXT
+        )""",
+    "anexos": """
+        CREATE TABLE IF NOT EXISTS anexos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ficha_uuid TEXT NOT NULL,
+            arquivo TEXT NOT NULL,
+            tipo TEXT,
+            descricao TEXT,
+            criado_em TEXT NOT NULL
+        )""",
     "ocorrencias": """
         CREATE TABLE IF NOT EXISTS ocorrencias (
             numero TEXT PRIMARY KEY,
@@ -325,6 +387,23 @@ def init_db():
         if cur.rowcount:
             print("[db] %d ocorrencia(s) migrada(s) para a tabela propria" % cur.rowcount)
 
+    # respostas que estavam dentro da ficha migram para a tabela propria
+    cur.execute("SELECT COUNT(*) FROM experiencia")
+    if cur.fetchone()[0] == 0:
+        cur.execute("""
+            INSERT INTO experiencia (ficha_uuid, cliente_codigo, cliente_nome,
+                etapa, metrica, nota, comentario, registrado_em, usuario_login)
+            SELECT uuid, cliente_codigo, cliente_nome, exp_etapa,
+                   COALESCE(exp_metrica,'csat'), exp_nota, exp_comentario,
+                   recebido_em, usuario_login
+              FROM fichas WHERE exp_nota IS NOT NULL AND exp_etapa IS NOT NULL
+        """)
+        if cur.rowcount:
+            print("[db] %d resposta(s) de experiencia migrada(s)" % cur.rowcount)
+
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_exp_ficha ON experiencia(ficha_uuid)")
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_exp_metrica ON experiencia(metrica)")
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_anexos_ficha ON anexos(ficha_uuid)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_oc_status ON ocorrencias(status)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_oc_cliente ON ocorrencias(cliente_codigo)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_fichas_usuario ON fichas(usuario_login)")
@@ -473,6 +552,10 @@ def api_bootstrap():
         "tipos": TIPOS,
         "problemas": PROBLEMAS_TECNICOS,
         "responsaveis": RESPONSAVEIS,
+        "cesta_preco": CESTA_PRECO,
+        "processos_csat": PROCESSOS_CSAT,
+        "tipos_evidencia": TIPOS_EVIDENCIA,
+        "max_anexos": MAX_ANEXOS,
         "etapas_jornada": ETAPAS_JORNADA,
         "metrica_por_etapa": METRICA_POR_ETAPA,
         "dias_minimos_nps": DIAS_MINIMOS_ENTRE_NPS,
@@ -529,6 +612,29 @@ def _salvar_foto(uuid_ficha, data_url):
     with open(destino, "wb") as fh:
         fh.write(binario)
     return nome
+
+
+MAX_ANEXOS = 8
+
+
+def _salvar_anexos(uuid_ficha, lista, db):
+    """Grava as evidencias extras da ficha. Mesma validacao da foto principal:
+    nome derivado do uuid ja validado, tipo conferido pela assinatura."""
+    if not isinstance(lista, list):
+        return 0
+    gravados = 0
+    for i, a in enumerate(lista[:MAX_ANEXOS]):
+        if not isinstance(a, dict):
+            continue
+        nome = _salvar_foto("%s-anexo%d" % (uuid_ficha, i), a.get("foto"))
+        if not nome:
+            continue
+        db.execute("INSERT INTO anexos (ficha_uuid, arquivo, tipo, descricao, criado_em)"
+                   " VALUES (?,?,?,?,?)",
+                   (uuid_ficha, nome, str(a.get("tipo") or "")[:80] or None,
+                    str(a.get("descricao") or "")[:300] or None, _agora()))
+        gravados += 1
+    return gravados
 
 
 def _texto(ficha, campo):
@@ -668,6 +774,30 @@ def api_receber_fichas():
                   _texto(ficha, "prox_responsavel"), _texto(ficha, "prox_data"),
                   uuid_f, foto_arq))
             ocorrencias.append({"uuid": uuid_f, "numero": ocorrencia})
+
+        # respostas de experiencia: 1 nas visitas comuns, varias na Voz do Cliente
+        respostas = ficha.get("experiencia")
+        if not isinstance(respostas, list):
+            respostas = ([{"etapa": etapa, "nota": nota,
+                           "comentario": ficha.get("exp_comentario")}]
+                         if etapa and nota is not None else [])
+        for resp in respostas[:12]:
+            et = str(resp.get("etapa") or "")[:60]
+            try:
+                nt = int(resp.get("nota"))
+            except (TypeError, ValueError):
+                continue
+            if not et or not (0 <= nt <= 10):
+                continue
+            db.execute("""INSERT INTO experiencia (ficha_uuid, cliente_codigo,
+                cliente_nome, etapa, metrica, nota, comentario, registrado_em,
+                usuario_login) VALUES (?,?,?,?,?,?,?,?,?)""",
+                (uuid_f, str(ficha.get("cliente_codigo") or "")[:40] or None,
+                 cliente_nome, et, METRICA_POR_ETAPA.get(et, "csat"), nt,
+                 str(resp.get("comentario") or "")[:1200] or None,
+                 _agora(), session["login"]))
+
+        _salvar_anexos(uuid_f, ficha.get("anexos"), db)
         aceitas.append(uuid_f)
 
     db.commit()
@@ -792,6 +922,9 @@ def api_gestor_fichas():
             d["extra"] = json.loads(d.pop("extra_json") or "{}")
         except ValueError:
             d["extra"] = {}
+        d["anexos"] = [dict(a) for a in get_db().execute(
+            "SELECT arquivo, tipo, descricao FROM anexos WHERE ficha_uuid = ? "
+            "ORDER BY id", (d["uuid"],))]
         fichas.append(d)
 
     db = get_db()
@@ -941,53 +1074,55 @@ def api_atualizar_ocorrencia(numero):
 @app.route("/api/gestor/experiencia")
 @gestor_obrigatorio
 def api_gestor_experiencia():
-    """Leitura da pesquisa, com cada metrica calculada do seu jeito.
+    """Le da tabela de respostas - uma visita pode ter varias.
 
     NPS  -> % promotores menos % detratores (so perguntas de recomendacao)
-    CSAT -> % de notas >= 8, por etapa da jornada
+    CSAT -> % de notas >= 8, por processo da empresa
     CES  -> % que achou facil (>= 8), no pos-venda
     """
     db = get_db()
     mes = request.args.get("mes")
-    base, args = "FROM fichas WHERE exp_nota IS NOT NULL", []
+    base, args = "FROM experiencia WHERE 1=1", []
     if mes:
-        base += " AND substr(recebido_em,1,7) = ?"
+        base += " AND substr(registrado_em,1,7) = ?"
         args.append(mes)
 
     def bloco(metrica, corte):
         linhas = db.execute(
-            "SELECT exp_etapa, COUNT(*) n, ROUND(AVG(exp_nota),1) media, "
-            "SUM(CASE WHEN exp_nota >= ? THEN 1 ELSE 0 END) bons, "
-            "SUM(CASE WHEN exp_nota <= ? THEN 1 ELSE 0 END) ruins "
-            + base + " AND exp_metrica = ? GROUP BY exp_etapa ORDER BY media ASC",
+            "SELECT etapa, COUNT(*) n, ROUND(AVG(nota),1) media, "
+            "SUM(CASE WHEN nota >= ? THEN 1 ELSE 0 END) bons, "
+            "SUM(CASE WHEN nota <= ? THEN 1 ELSE 0 END) ruins "
+            + base + " AND metrica = ? GROUP BY etapa ORDER BY media ASC",
             [corte, NPS_DETRATOR, metrica] + args).fetchall()
         tot = db.execute(
-            "SELECT COUNT(*) n, ROUND(AVG(exp_nota),1) media, "
-            "SUM(CASE WHEN exp_nota >= ? THEN 1 ELSE 0 END) bons, "
-            "SUM(CASE WHEN exp_nota <= ? THEN 1 ELSE 0 END) ruins "
-            + base + " AND exp_metrica = ?",
+            "SELECT COUNT(*) n, ROUND(AVG(nota),1) media, "
+            "SUM(CASE WHEN nota >= ? THEN 1 ELSE 0 END) bons, "
+            "SUM(CASE WHEN nota <= ? THEN 1 ELSE 0 END) ruins "
+            + base + " AND metrica = ?",
             [corte, NPS_DETRATOR, metrica] + args).fetchone()
         n = tot["n"] or 0
-        return {
-            "por_etapa": [dict(r) for r in linhas], "n": n, "media": tot["media"],
-            "bons": tot["bons"] or 0, "ruins": tot["ruins"] or 0,
-            "pct_bons": round(100.0 * (tot["bons"] or 0) / n) if n else None,
-        }
+        return {"por_etapa": [dict(r) for r in linhas], "n": n,
+                "media": tot["media"], "bons": tot["bons"] or 0,
+                "ruins": tot["ruins"] or 0,
+                "pct_bons": round(100.0 * (tot["bons"] or 0) / n) if n else None}
 
     nps = bloco("nps", NPS_PROMOTOR)
     nps["indice"] = (round(100.0 * (nps["bons"] - nps["ruins"]) / nps["n"])
                      if nps["n"] else None)
 
     comentarios = [dict(r) for r in db.execute(
-        "SELECT cliente_nome, exp_etapa, exp_nota, exp_comentario, exp_metrica, recebido_em "
-        + base + " AND exp_comentario <> '' ORDER BY exp_nota ASC, recebido_em DESC LIMIT 40",
-        args)]
+        "SELECT cliente_nome, etapa AS exp_etapa, nota AS exp_nota, "
+        "comentario AS exp_comentario, metrica AS exp_metrica, "
+        "registrado_em AS recebido_em " + base +
+        " AND comentario IS NOT NULL AND comentario <> '' "
+        "ORDER BY nota ASC, registrado_em DESC LIMIT 40", args)]
 
     return jsonify({
-        "nps": nps,
-        "csat": bloco("csat", CSAT_SATISFEITO),
-        "ces": bloco("ces", CES_FACIL),
-        "comentarios": comentarios,
+        "nps": nps, "csat": bloco("csat", CSAT_SATISFEITO),
+        "ces": bloco("ces", CES_FACIL), "comentarios": comentarios,
+        "clientes_ouvidos": db.execute(
+            "SELECT COUNT(DISTINCT COALESCE(cliente_codigo, cliente_nome)) c "
+            + base, args).fetchone()["c"],
         "cortes": {"nps_promotor": NPS_PROMOTOR, "nps_detrator": NPS_DETRATOR,
                    "csat_satisfeito": CSAT_SATISFEITO, "ces_facil": CES_FACIL},
     })

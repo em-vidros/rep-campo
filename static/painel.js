@@ -270,8 +270,8 @@ async function carregarExperiencia() {
       <div class="rot">CSAT satisfeitos<br><small>${d.csat.n} resposta(s)</small></div></div>
     <div class="cartao"><div class="num ${d.ces.pct_bons !== null && d.ces.pct_bons < 70 ? 'num-alerta' : ''}">${d.ces.pct_bons === null ? '—' : d.ces.pct_bons + '%'}</div>
       <div class="rot">CES acharam fácil<br><small>${d.ces.n} resposta(s)</small></div></div>
-    <div class="cartao"><div class="num">${d.nps.n + d.csat.n + d.ces.n}</div>
-      <div class="rot">clientes ouvidos</div></div>`;
+    <div class="cartao"><div class="num">${d.clientes_ouvidos}</div>
+      <div class="rot">clientes ouvidos<br><small>${d.nps.n + d.csat.n + d.ces.n} respostas</small></div></div>`;
 
   const linhas = (bloco, rotulo) => bloco.por_etapa.map(e => `
     <tr><td data-label="Etapa"><b>${esc(e.exp_etapa || '—')}</b></td>
