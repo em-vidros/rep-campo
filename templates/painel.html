@@ -83,14 +83,20 @@
       <label>Situação
         <select id="o-situacao">
           <option value="aberta">Abertas</option>
+          <option value="em_andamento">Em andamento</option>
           <option value="resolvida">Resolvidas</option>
           <option value="">Todas</option>
         </select>
       </label>
+      <label>Canal de origem
+        <select id="o-canal"><option value="">todos os canais</option></select>
+      </label>
     </div>
-    <p class="explica">Toda visita técnica abre uma ocorrência numerada. O número é
-      gerado no servidor quando a ficha sincroniza — por isso não some se o
-      representante estiver sem sinal na hora do registro.</p>
+    <p class="explica">Toda visita técnica abre uma ocorrência numerada, gerada no
+      servidor quando a ficha sincroniza — por isso não some se o representante
+      estiver sem sinal. <b>A ocorrência é independente da visita:</b> o modelo já
+      aceita abertura por balcão, telefone, WhatsApp, e-mail ou entrega, e por
+      outros setores além do comercial.</p>
     <div id="lista-oc" class="lista-gestor"></div>
   </section>
 

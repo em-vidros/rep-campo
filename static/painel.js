@@ -180,54 +180,78 @@ carregarCobertura();
 
 
 /* ---------------------------------------------------------- ocorrencias */
+const ROTULO_STATUS = { aberta: 'aberta', em_andamento: 'em andamento', resolvida: 'resolvida' };
+
 async function carregarOcorrencias() {
-  const r = await fetch('/api/gestor/ocorrencias?situacao=' + $('o-situacao').value);
+  const q = new URLSearchParams();
+  if ($('o-situacao').value) q.set('situacao', $('o-situacao').value);
+  if ($('o-canal') && $('o-canal').value) q.set('canal', $('o-canal').value);
+  const r = await fetch('/api/gestor/ocorrencias?' + q);
   if (!r.ok) return;
   const d = await r.json();
 
+  if ($('o-canal') && $('o-canal').options.length <= 1) {
+    $('o-canal').innerHTML = '<option value="">todos os canais</option>' +
+      d.canais.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  }
+
+  const atrasadas = d.ocorrencias.filter(o =>
+    o.status !== 'resolvida' && (o.dias_aberta || 0) > 7).length;
   $('cartoes-oc').innerHTML = `
     <div class="cartao"><div class="num ${d.abertas ? 'num-alerta' : ''}">${d.abertas}</div>
-      <div class="rot">ocorrências abertas</div></div>
-    <div class="cartao"><div class="num">${d.resolvidas}</div>
-      <div class="rot">resolvidas</div></div>
-    <div class="cartao"><div class="num">${d.ocorrencias.filter(o => (o.dias_aberta || 0) > 7 && o.ocorrencia_status === 'aberta').length}</div>
-      <div class="rot">abertas há mais de 7 dias</div></div>`;
+      <div class="rot">em aberto</div></div>
+    <div class="cartao"><div class="num">${d.resolvidas}</div><div class="rot">resolvidas</div></div>
+    <div class="cartao"><div class="num ${atrasadas ? 'num-alerta' : ''}">${atrasadas}</div>
+      <div class="rot">abertas há mais de 7 dias</div></div>
+    <div class="cartao"><div class="num">${Object.keys(d.por_canal).length}</div>
+      <div class="rot">canais de origem</div></div>`;
 
   $('lista-oc').innerHTML = d.ocorrencias.map(o => {
-    const velha = o.ocorrencia_status === 'aberta' && (o.dias_aberta || 0) > 7;
+    const velha = o.status !== 'resolvida' && (o.dias_aberta || 0) > 7;
+    const selo = o.status === 'resolvida' ? 'forte' : velha ? 'pendente' : 'media';
     return `<div class="ficha">
       <div class="ficha-cab">
-        <div><b>${esc(o.ocorrencia_num)} · ${esc(o.cliente_nome)}</b>
-          <div class="sub">${esc(o.problema_tipo || 'sem tipo')} · ${esc(o.municipio || '—')}
-            · aberta há ${o.dias_aberta} dia(s) · ${esc(o.usuario_login)}</div></div>
+        <div><b>${esc(o.numero)} · ${esc(o.cliente_nome)}</b>
+          <div class="sub">${esc(o.tipo || 'sem tipo')} · ${esc(o.municipio || '—')}
+            · ${esc(o.canal)} · ${esc(o.setor)} · há ${o.dias_aberta} dia(s)
+            · registrou: ${esc(o.aberta_por)}</div></div>
         <div class="ficha-selos">
-          ${o.ocorrencia_status === 'aberta'
-            ? `<span class="selo ${velha ? 'pendente' : 'media'}">${velha ? 'atrasada' : 'aberta'}</span>
-               <button class="btn-sec" data-resolver="${esc(o.ocorrencia_num)}">Marcar resolvida</button>`
-            : '<span class="selo forte">resolvida</span>'}
+          <span class="selo ${selo}">${esc(ROTULO_STATUS[o.status] || o.status)}</span>
+          ${o.status !== 'resolvida' ? `
+            ${o.status === 'aberta' ? `<button class="btn-sec" data-andamento="${esc(o.numero)}">Em andamento</button>` : ''}
+            <button class="btn-sec" data-resolver="${esc(o.numero)}">Resolver</button>` : ''}
         </div>
       </div>
       <div class="ficha-corpo">
-        <div class="bloco"><h4>Relato</h4><p>${esc(o.relato || '—')}</p></div>
-        <div class="bloco"><h4>Próximo passo</h4>
-          <p class="passo">${esc(o.proximo_passo || '—')}
-          ${o.prox_responsavel ? '<br><small>quem: ' + esc(o.prox_responsavel) + '</small>' : ''}
-          ${o.encaminhado_para ? '<br><small>encaminhado: ' + esc(o.encaminhado_para) + '</small>' : ''}</p></div>
+        <div class="bloco"><h4>Descrição</h4><p>${esc(o.descricao || '—')}</p></div>
+        ${o.pedido_nf ? `<div class="bloco"><h4>Pedido / NF</h4><p>${esc(o.pedido_nf)}</p></div>` : ''}
+        <div class="bloco"><h4>Responsável</h4><p>${esc(o.responsavel || 'não definido')}
+          ${o.prazo ? '<br><small>prazo: ' + dataBR(o.prazo) + '</small>' : ''}</p></div>
+        ${o.resolucao ? `<div class="bloco"><h4>Como foi resolvida</h4>
+          <p class="passo">${esc(o.resolucao)}<br><small>por ${esc(o.resolvida_por || '—')} em ${dataBR(o.resolvida_em)}</small></p></div>` : ''}
         ${o.foto_arquivo ? `<div class="bloco"><h4>Foto</h4><img class="ficha-foto" src="/foto/${esc(o.foto_arquivo)}" alt="foto da ocorrência"></div>` : ''}
       </div></div>`;
-  }).join('') || '<div class="vazio">Nenhuma ocorrência nessa situação.</div>';
+  }).join('') || '<div class="vazio">Nenhuma ocorrência com esse filtro.</div>';
 
   document.querySelectorAll('.ficha-cab').forEach(c => c.onclick = ev => {
-    if (ev.target.dataset.resolver) return;
+    if (ev.target.dataset.resolver || ev.target.dataset.andamento) return;
     c.parentElement.classList.toggle('aberta');
   });
-  document.querySelectorAll('[data-resolver]').forEach(b => b.onclick = async ev => {
+  const patch = async (numero, corpo) => {
+    const r = await fetch('/api/gestor/ocorrencia/' + numero,
+      { method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(corpo) });
+    if (r.ok) carregarOcorrencias(); else alert('Não foi possível atualizar.');
+  };
+  document.querySelectorAll('[data-andamento]').forEach(b => b.onclick = ev => {
     ev.stopPropagation();
-    const n = b.dataset.resolver;
-    if (!confirm('Marcar ' + n + ' como resolvida?')) return;
-    const r = await fetch('/api/gestor/ocorrencia/' + n + '/resolver', { method: 'POST' });
-    if (r.ok) carregarOcorrencias();
-    else alert('Não foi possível resolver essa ocorrência.');
+    patch(b.dataset.andamento, { status: 'em_andamento' });
+  });
+  document.querySelectorAll('[data-resolver]').forEach(b => b.onclick = ev => {
+    ev.stopPropagation();
+    const como = prompt('Como foi resolvida? (fica registrado no histórico)');
+    if (como === null) return;
+    patch(b.dataset.resolver, { status: 'resolvida', resolucao: como });
   });
 }
 $('o-situacao').onchange = carregarOcorrencias;

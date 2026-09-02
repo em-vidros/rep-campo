@@ -123,6 +123,20 @@ PERGUNTA_EXPERIENCIA = {
 # NPS cansa se perguntado toda visita. CSAT e CES podem ser sempre.
 DIAS_MINIMOS_ENTRE_NPS = 90
 
+# --------------------------------------------------------------------------
+# Ocorrencias: por onde o cliente reclamou e quem registrou.
+# Hoje so a visita do REP abre ocorrencia. O modelo ja nasce preparado para
+# recepcao, vendedor no balcao, expedicao etc. abrirem tambem - por isso a
+# ocorrencia e tabela propria, e nao um campo dentro da ficha de visita.
+# --------------------------------------------------------------------------
+CANAIS = ["Visita do representante", "Balcao da loja", "Telefone", "WhatsApp",
+          "E-mail", "Entrega", "Outro"]
+
+SETORES = ["Comercial", "Recepcao", "Expedicao", "Producao", "Qualidade",
+           "Financeiro", "Assistencia tecnica"]
+
+STATUS_OCORRENCIA = ["aberta", "em_andamento", "resolvida"]
+
 
 def _secret_key():
     env = os.environ.get("REP_SECRET_KEY")
@@ -212,6 +226,28 @@ SCHEMA = {
             ativo INTEGER NOT NULL DEFAULT 1,
             atualizado_em TEXT
         )""",
+    "ocorrencias": """
+        CREATE TABLE IF NOT EXISTS ocorrencias (
+            numero TEXT PRIMARY KEY,
+            aberta_em TEXT NOT NULL,
+            aberta_por TEXT NOT NULL,
+            setor TEXT NOT NULL DEFAULT 'Comercial',
+            canal TEXT NOT NULL DEFAULT 'Visita do representante',
+            cliente_codigo TEXT,
+            cliente_nome TEXT NOT NULL,
+            municipio TEXT,
+            tipo TEXT,
+            descricao TEXT,
+            pedido_nf TEXT,
+            status TEXT NOT NULL DEFAULT 'aberta',
+            responsavel TEXT,
+            prazo TEXT,
+            ficha_uuid TEXT,
+            foto_arquivo TEXT,
+            resolucao TEXT,
+            resolvida_em TEXT,
+            resolvida_por TEXT
+        )""",
     "fichas": """
         CREATE TABLE IF NOT EXISTS fichas (
             uuid TEXT PRIMARY KEY,
@@ -271,6 +307,26 @@ def init_db():
             if nome not in existentes:
                 cur.execute("ALTER TABLE %s ADD COLUMN %s %s" % (tabela, nome, tipo))
                 print("[db] coluna adicionada: %s.%s" % (tabela, nome))
+    # ocorrencias que nasceram embutidas na ficha migram para a tabela propria
+    cur.execute("SELECT COUNT(*) FROM ocorrencias")
+    if cur.fetchone()[0] == 0:
+        cur.execute("""
+            INSERT OR IGNORE INTO ocorrencias
+                (numero, aberta_em, aberta_por, setor, canal, cliente_codigo,
+                 cliente_nome, municipio, tipo, descricao, status, responsavel,
+                 prazo, ficha_uuid, foto_arquivo, resolvida_em)
+            SELECT ocorrencia_num, recebido_em, usuario_login, 'Comercial',
+                   'Visita do representante', cliente_codigo, cliente_nome,
+                   municipio, problema_tipo, relato,
+                   COALESCE(ocorrencia_status, 'aberta'), prox_responsavel,
+                   prox_data, uuid, foto_arquivo, ocorrencia_fechada_em
+              FROM fichas WHERE ocorrencia_num IS NOT NULL
+        """)
+        if cur.rowcount:
+            print("[db] %d ocorrencia(s) migrada(s) para a tabela propria" % cur.rowcount)
+
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_oc_status ON ocorrencias(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_oc_cliente ON ocorrencias(cliente_codigo)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_fichas_usuario ON fichas(usuario_login)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_fichas_data ON fichas(recebido_em)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_clientes_nome ON clientes(nome)")
@@ -500,8 +556,8 @@ def _proxima_ocorrencia(db):
     ano = datetime.now(timezone.utc).strftime("%Y")
     prefixo = "OC-%s-" % ano
     ultimo = db.execute(
-        "SELECT ocorrencia_num FROM fichas WHERE ocorrencia_num LIKE ? "
-        "ORDER BY ocorrencia_num DESC LIMIT 1", (prefixo + "%",)).fetchone()
+        "SELECT numero FROM ocorrencias WHERE numero LIKE ? "
+        "ORDER BY numero DESC LIMIT 1", (prefixo + "%",)).fetchone()
     seq = 1
     if ultimo and ultimo[0]:
         try:
@@ -596,9 +652,23 @@ def api_receber_fichas():
             _texto(ficha, "problema_tipo"), ocorrencia, status_oc,
             etapa, nota, _texto(ficha, "exp_comentario"), metrica,
         ))
-        aceitas.append(uuid_f)
         if ocorrencia:
+            extra = ficha.get("extra") or {}
+            db.execute("""
+                INSERT OR IGNORE INTO ocorrencias
+                    (numero, aberta_em, aberta_por, setor, canal, cliente_codigo,
+                     cliente_nome, municipio, tipo, descricao, pedido_nf, status,
+                     responsavel, prazo, ficha_uuid, foto_arquivo)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,'aberta',?,?,?,?)
+            """, (ocorrencia, _agora(), session["login"], "Comercial",
+                  "Visita do representante",
+                  str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
+                  _texto(ficha, "municipio"), _texto(ficha, "problema_tipo"),
+                  relato, str(extra.get("pedido_nf") or "")[:60] or None,
+                  _texto(ficha, "prox_responsavel"), _texto(ficha, "prox_data"),
+                  uuid_f, foto_arq))
             ocorrencias.append({"uuid": uuid_f, "numero": ocorrencia})
+        aceitas.append(uuid_f)
 
     db.commit()
     return jsonify({"aceitas": aceitas, "rejeitadas": rejeitadas,
@@ -795,19 +865,18 @@ def api_gestor_cobertura():
 @app.route("/api/gestor/ocorrencias")
 @gestor_obrigatorio
 def api_gestor_ocorrencias():
-    """Ocorrencias tecnicas abertas pela ficha, para acompanhamento."""
-    situacao = request.args.get("situacao", "aberta")
-    onde = "WHERE ocorrencia_num IS NOT NULL"
-    args = []
-    if situacao in ("aberta", "resolvida"):
-        onde += " AND ocorrencia_status = ?"
-        args.append(situacao)
+    """Ocorrencias de qualquer canal. Hoje so a visita abre; o modelo ja
+    aceita balcao, telefone, entrega e outros setores."""
+    filtros, args = [], []
+    for campo, param in (("status", "situacao"), ("canal", "canal"),
+                         ("setor", "setor"), ("tipo", "tipo")):
+        v = request.args.get(param)
+        if v:
+            filtros.append("%s = ?" % campo)
+            args.append(v)
+    onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
     rows = get_db().execute(
-        "SELECT uuid, ocorrencia_num, ocorrencia_status, ocorrencia_fechada_em, "
-        "cliente_nome, cliente_codigo, municipio, problema_tipo, relato, "
-        "proximo_passo, prox_responsavel, prox_data, encaminhado_para, "
-        "recebido_em, criado_em_disp, foto_arquivo, usuario_login "
-        "FROM fichas " + onde + " ORDER BY ocorrencia_num DESC LIMIT 300", args
+        "SELECT * FROM ocorrencias " + onde + " ORDER BY numero DESC LIMIT 300", args
     ).fetchall()
 
     hoje = datetime.now(timezone.utc)
@@ -815,34 +884,57 @@ def api_gestor_ocorrencias():
     for r in rows:
         d = dict(r)
         try:
-            d["dias_aberta"] = (hoje - datetime.fromisoformat(r["recebido_em"])).days
+            d["dias_aberta"] = (hoje - datetime.fromisoformat(r["aberta_em"])).days
         except (TypeError, ValueError):
             d["dias_aberta"] = None
         saida.append(d)
 
     db = get_db()
+    cont = {x[0]: x[1] for x in db.execute(
+        "SELECT status, COUNT(*) FROM ocorrencias GROUP BY status")}
     return jsonify({
         "ocorrencias": saida,
-        "abertas": db.execute("SELECT COUNT(*) c FROM fichas "
-                              "WHERE ocorrencia_status = 'aberta'").fetchone()["c"],
-        "resolvidas": db.execute("SELECT COUNT(*) c FROM fichas "
-                                 "WHERE ocorrencia_status = 'resolvida'").fetchone()["c"],
+        "abertas": cont.get("aberta", 0) + cont.get("em_andamento", 0),
+        "resolvidas": cont.get("resolvida", 0),
+        "por_canal": {x[0]: x[1] for x in db.execute(
+            "SELECT canal, COUNT(*) FROM ocorrencias GROUP BY canal")},
+        "canais": CANAIS, "setores": SETORES, "status": STATUS_OCORRENCIA,
     })
 
 
-@app.route("/api/gestor/ocorrencia/<numero>/resolver", methods=["POST"])
+@app.route("/api/gestor/ocorrencia/<numero>", methods=["PATCH"])
 @gestor_obrigatorio
-def api_resolver_ocorrencia(numero):
+def api_atualizar_ocorrencia(numero):
     if not re.fullmatch(r"OC-\d{4}-\d{4}", numero or ""):
         return jsonify({"erro": "numero_invalido"}), 400
+    d = request.get_json(silent=True) or {}
     db = get_db()
-    cur = db.execute(
-        "UPDATE fichas SET ocorrencia_status = 'resolvida', ocorrencia_fechada_em = ? "
-        "WHERE ocorrencia_num = ? AND ocorrencia_status = 'aberta'",
-        (_agora(), numero))
+    if not db.execute("SELECT 1 FROM ocorrencias WHERE numero = ?", (numero,)).fetchone():
+        return jsonify({"erro": "nao_encontrada"}), 404
+
+    if "status" in d:
+        if d["status"] not in STATUS_OCORRENCIA:
+            return jsonify({"erro": "status_invalido"}), 400
+        if d["status"] == "resolvida":
+            db.execute("UPDATE ocorrencias SET status = 'resolvida', resolvida_em = ?, "
+                       "resolvida_por = ?, resolucao = COALESCE(?, resolucao) "
+                       "WHERE numero = ?",
+                       (_agora(), session["login"],
+                        (d.get("resolucao") or "").strip()[:1000] or None, numero))
+            # mantem a ficha de origem coerente
+            db.execute("UPDATE fichas SET ocorrencia_status = 'resolvida', "
+                       "ocorrencia_fechada_em = ? WHERE ocorrencia_num = ?",
+                       (_agora(), numero))
+        else:
+            db.execute("UPDATE ocorrencias SET status = ?, resolvida_em = NULL, "
+                       "resolvida_por = NULL WHERE numero = ?", (d["status"], numero))
+            db.execute("UPDATE fichas SET ocorrencia_status = ?, "
+                       "ocorrencia_fechada_em = NULL WHERE ocorrencia_num = ?",
+                       (d["status"], numero))
+    if "responsavel" in d:
+        db.execute("UPDATE ocorrencias SET responsavel = ? WHERE numero = ?",
+                   ((d["responsavel"] or "").strip()[:120] or None, numero))
     db.commit()
-    if not cur.rowcount:
-        return jsonify({"erro": "nao_encontrada_ou_ja_resolvida"}), 404
     return jsonify({"ok": True, "numero": numero})
 
 
