@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>REP Campo</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f3d2e">
+<link rel="apple-touch-icon" href="/static/icone-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca">REP <span>Campo</span></div>
+    <span class="topo-links">
+      {% if papel == 'gestor' %}<a class="sair" href="/painel">painel</a>{% endif %}
+      <a class="sair" href="/logout">sair</a>
+    </span>
+  </div>
+  <div id="barra-status" class="status">
+    <span id="pt-conexao" class="pastilha">verificando</span>
+    <span id="pt-fila" class="pastilha oculto">0 na fila</span>
+    <button id="btn-sync" class="mini oculto">enviar agora</button>
+  </div>
+</header>
+
+<nav class="abas">
+  <button class="aba ativa" data-tela="nova">Nova ficha</button>
+  <button class="aba" data-tela="fichas">Minhas fichas</button>
+  <button class="aba" data-tela="resumo">Resumo</button>
+</nav>
+
+<main>
+  <!-- ============ NOVA FICHA ============ -->
+  <section id="tela-nova" class="tela ativa">
+    <div id="passo-tipo">
+      <h2>Que tipo de visita?</h2>
+      <div class="grade-tipos">
+        <button class="cartao-tipo" data-tipo="comercial"><b>Comercial</b><small>oportunidade de venda</small></button>
+        <button class="cartao-tipo" data-tipo="cordialidade"><b>Cordialidade</b><small>relacionamento</small></button>
+        <button class="cartao-tipo" data-tipo="tecnica"><b>Tecnica</b><small>reclamacao / problema</small></button>
+        <button class="cartao-tipo" data-tipo="prospeccao"><b>Prospeccao</b><small>cliente novo</small></button>
+        <button class="cartao-tipo" data-tipo="preco"><b>Preco</b><small>pesquisa de concorrente</small></button>
+        <button class="cartao-tipo" data-tipo="voz"><b>Voz do cliente</b><small>satisfacao / NPS</small></button>
+        <button class="cartao-tipo" data-tipo="evento"><b>Evento</b><small>feira / acao</small></button>
+      </div>
+    </div>
+
+    <form id="form-ficha" class="oculto" novalidate>
+      <div class="cabecalho-form">
+        <button type="button" id="btn-voltar" class="mini">voltar</button>
+        <span id="rotulo-tipo" class="etiqueta"></span>
+      </div>
+
+      <div id="aviso-rascunho" class="alerta info oculto">Rascunho recuperado.</div>
+
+      <label>Cliente *
+        <input id="f-cliente" list="lista-clientes" placeholder="digite para buscar" autocomplete="off" required>
+        <datalist id="lista-clientes"></datalist>
+        <small id="dica-cliente" class="dica"></small>
+      </label>
+
+      <label class="linha-check">
+        <input type="checkbox" id="f-prospect"> Cliente novo (nao esta na carteira)
+      </label>
+
+      <label>Municipio *
+        <input id="f-municipio" list="lista-municipios" autocomplete="off" required>
+        <datalist id="lista-municipios"></datalist>
+      </label>
+
+      <label>Objetivo da visita *
+        <input id="f-objetivo" placeholder="o que eu vim resolver aqui" required>
+      </label>
+
+      <div id="campos-tipo"></div>
+
+      <label>O que aconteceu *
+        <textarea id="f-relato" rows="5" placeholder="conte o que foi tratado, o que o cliente disse, o que voce observou"></textarea>
+        <small id="contador-relato" class="dica"></small>
+      </label>
+
+      <fieldset class="bloco-passo">
+        <legend>Proximo passo <b class="obrig">obrigatorio</b></legend>
+        <small class="dica">Sem proximo passo a visita nao conta como realizada.</small>
+        <label>O que sera feito *
+          <input id="f-passo" placeholder="ex: enviar orcamento de temperado 8mm" required>
+        </label>
+        <div class="dupla">
+          <label>Quem
+            <input id="f-passo-resp" placeholder="eu / vendedor / gerente">
+          </label>
+          <label>Quando
+            <input id="f-passo-data" type="date">
+          </label>
+        </div>
+        <label id="wrap-encaminhado">Encaminhar para
+          <input id="f-encaminhado" placeholder="nome do vendedor ou gerente">
+        </label>
+      </fieldset>
+
+      <div class="bloco-foto">
+        <label id="rotulo-foto">Foto</label>
+        <input type="file" id="f-foto" accept="image/*" capture="environment">
+        <div id="previa-foto" class="previa oculto"><img id="img-previa" alt="previa da foto"></div>
+      </div>
+
+      <div id="box-geo" class="geo">
+        <span id="txt-geo">localizacao: aguardando</span>
+        <button type="button" id="btn-geo" class="mini">tentar de novo</button>
+      </div>
+
+      <div id="erros-form" class="alerta erro oculto"></div>
+
+      <button type="submit" class="btn primario grande">Salvar ficha</button>
+      <p class="rodape-dica">A ficha salva no celular mesmo sem internet e sobe sozinha quando pegar sinal.</p>
+    </form>
+  </section>
+
+  <!-- ============ MINHAS FICHAS ============ -->
+  <section id="tela-fichas" class="tela">
+    <h2>Minhas fichas</h2>
+    <div id="lista-fichas" class="lista"></div>
+  </section>
+
+  <!-- ============ RESUMO ============ -->
+  <section id="tela-resumo" class="tela">
+    <h2>Resumo do mes</h2>
+    <div id="cartoes-resumo" class="cartoes"></div>
+    <div id="detalhe-resumo"></div>
+  </section>
+</main>
+
+<div id="aviso" class="aviso oculto"></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

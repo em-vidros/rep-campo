@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>REP Campo - Entrar</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0f3d2e">
+<link rel="stylesheet" href="/static/styles.css">
+</head>
+<body class="tela-login">
+  <form class="cartao-login" method="post" autocomplete="on">
+    <div class="marca">REP <span>Campo</span></div>
+    <p class="sub">Registro de visitas - EM Vidros</p>
+    {% if erro %}<div class="alerta erro">{{ erro }}</div>{% endif %}
+    <label>Login
+      <input name="login" autocomplete="username" autocapitalize="none" required autofocus>
+    </label>
+    <label>Senha
+      <input name="senha" type="password" autocomplete="current-password" required>
+    </label>
+    <button class="btn primario" type="submit">Entrar</button>
+  </form>
+</body>
+</html>

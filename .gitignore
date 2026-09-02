@@ -1,0 +1,25 @@
+# dados reais - NUNCA versionar
+dados/*.db
+dados/secret.key
+dados/fotos/*
+!dados/fotos/.gitkeep
+
+# ambiente
+.venv/
+venv/
+__pycache__/
+*.pyc
+instance/
+
+# artefatos gerados
+*.html.bak
+DOC_TECNICO_TI.html
+GUIA_REVISAO.html
+*.pdf
+
+# backups locais
+.*.bak_*
+*.bak_*
+
+# macOS
+.DS_Store

@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REP Campo - Painel de gestao</title>
+<meta name="theme-color" content="#0f3d2e">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/painel.css">
+</head>
+<body class="painel">
+
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca">REP <span>Campo</span> <em>gestao</em></div>
+    <div class="topo-acoes">
+      <span class="quem">{{ nome }}</span>
+      <a class="sair" href="/">app do rep</a>
+      <a class="sair" href="/logout">sair</a>
+    </div>
+  </div>
+</header>
+
+<nav class="abas">
+  <button class="aba ativa" data-tela="cobertura">Cobertura da carteira</button>
+  <button class="aba" data-tela="fichas">Fichas de visita</button>
+</nav>
+
+<main class="conteudo">
+
+  <!-- ================= COBERTURA ================= -->
+  <section id="tela-cobertura" class="tela ativa">
+    <div id="cartoes-cob" class="cartoes-larg"></div>
+
+    <div class="barra-filtros">
+      <label>Curvas
+        <select id="c-curvas">
+          <option value="A,B">A e B (carteira-chave)</option>
+          <option value="A">Só A</option>
+          <option value="B">Só B</option>
+          <option value="A,B,C">Todas</option>
+        </select>
+      </label>
+      <label>Mostrar
+        <select id="c-filtro">
+          <option value="vencidos">Só quem está vencido</option>
+          <option value="nunca">Nunca visitados</option>
+          <option value="todos">Todos</option>
+        </select>
+      </label>
+      <label>Município
+        <input id="c-municipio" placeholder="filtrar" list="c-lista-mun">
+        <datalist id="c-lista-mun"></datalist>
+      </label>
+      <button id="c-exportar" class="btn-sec">Baixar CSV</button>
+    </div>
+
+    <p class="explica">Ciclo esperado por praça: Imperatriz <b>90 dias</b> ·
+      Santa Inês e eixo Pindaré <b>120</b> · Pará <b>180</b> · demais <b>120</b>.
+      Vencido = passou do ciclo ou nunca recebeu visita.</p>
+
+    <div class="tabela-rolagem">
+      <table id="tab-cobertura">
+        <thead><tr>
+          <th>Cliente</th><th>Município</th><th>Curva</th>
+          <th class="num">Vol 12m</th><th class="num">Última visita</th>
+          <th class="num">Dias</th><th class="num">Ciclo</th><th>Vendedor</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div id="cob-vazio" class="vazio oculto">Nada aqui com esse filtro.</div>
+  </section>
+
+  <!-- ================= FICHAS ================= -->
+  <section id="tela-fichas" class="tela">
+    <div class="barra-filtros">
+      <label>Mês <select id="f-mes"><option value="">todos</option></select></label>
+      <label>Tipo <select id="f-tipo"><option value="">todos</option>
+        {% for k, v in tipos.items() %}<option value="{{ k }}">{{ v.label }}</option>{% endfor %}
+      </select></label>
+      <label>Município <select id="f-mun"><option value="">todos</option></select></label>
+      <label>Representante <select id="f-usuario"><option value="">todos</option></select></label>
+      <label>Evidência <select id="f-nivel"><option value="">toda</option>
+        <option value="forte">forte</option><option value="media">média</option>
+        <option value="leve">leve</option></select></label>
+      <label class="cresce">Buscar
+        <input id="f-busca" placeholder="cliente, relato ou próximo passo">
+      </label>
+    </div>
+    <div id="contagem-fichas" class="explica"></div>
+    <div id="lista-gestor" class="lista-gestor"></div>
+  </section>
+
+</main>
+<script src="/static/painel.js"></script>
+</body>
+</html>
