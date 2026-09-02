@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import urllib.request
 from datetime import datetime, timezone
 
@@ -60,6 +61,44 @@ def gravar_cliente(cur, c, agora):
 CARTEIRA_URL = os.environ.get("CARTEIRA_URL")
 CARTEIRA_TOKEN = os.environ.get("CARTEIRA_TOKEN")
 
+# Falha de rede e banco costuma passar sozinha. So avisa quem tem que agir
+# se nao passar - alerta que toca todo dia vira ruido e para de ser lido.
+TENTATIVAS = 4
+ESPERA = [30, 120, 300]          # segundos entre uma tentativa e a seguinte
+
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT = os.environ.get("TELEGRAM_CHAT_ID")
+N8N_WEBHOOK = os.environ.get("SYNC_ALERTA_WEBHOOK")
+
+
+def avisar(texto):
+    """Manda o alerta. Tenta o Telegram direto; se nao houver token, o n8n."""
+    enviado = False
+    if TELEGRAM_TOKEN and TELEGRAM_CHAT:
+        try:
+            corpo = json.dumps({"chat_id": TELEGRAM_CHAT, "text": texto,
+                                "parse_mode": "HTML"}).encode()
+            req = urllib.request.Request(
+                "https://api.telegram.org/bot%s/sendMessage" % TELEGRAM_TOKEN,
+                data=corpo, headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=20).read()
+            enviado = True
+        except Exception as e:
+            print("[--] Telegram falhou: %s" % str(e)[:120])
+    if not enviado and N8N_WEBHOOK:
+        try:
+            req = urllib.request.Request(
+                N8N_WEBHOOK, data=json.dumps({"texto": texto}).encode(),
+                headers={"Content-Type": "application/json"})
+            urllib.request.urlopen(req, timeout=20).read()
+            enviado = True
+        except Exception as e:
+            print("[--] webhook falhou: %s" % str(e)[:120])
+    if not enviado:
+        print("[--] SEM CANAL DE ALERTA CONFIGURADO. A mensagem seria:")
+        print(texto)
+    return enviado
+
 
 def _agora():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -91,11 +130,8 @@ def ler_do_painel(url):
     return saida
 
 
-def main():
-    p = argparse.ArgumentParser()
-    p.add_argument("--simular", action="store_true",
-                   help="mostra o que faria, sem escrever no banco")
-    args = p.parse_args()
+def sincronizar(args):
+    """Uma tentativa. Levanta excecao se algo der errado - quem chama repete."""
 
     if CARTEIRA_URL:
         clientes = ler_do_painel(CARTEIRA_URL)
@@ -160,5 +196,43 @@ def main():
     con.close()
 
 
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--simular", action="store_true",
+                   help="mostra o que faria, sem escrever no banco")
+    p.add_argument("--sem-retry", action="store_true",
+                   help="falha na primeira, sem repetir (para teste)")
+    args = p.parse_args()
+
+    tentativas = 1 if (args.simular or args.sem_retry) else TENTATIVAS
+    erros = []
+    for n in range(1, tentativas + 1):
+        try:
+            sincronizar(args)
+            if n > 1:
+                print()
+                print("[OK] deu certo na tentativa %d de %d." % (n, tentativas))
+            return 0
+        except SystemExit:
+            raise
+        except Exception as exc:
+            erros.append("tentativa %d: %s" % (n, exc))
+            print("[--] tentativa %d de %d falhou: %s" % (n, tentativas, str(exc)[:160]))
+            if n < tentativas:
+                espera = ESPERA[min(n - 1, len(ESPERA) - 1)]
+                print("     esperando %ds antes de tentar de novo..." % espera)
+                time.sleep(espera)
+
+    # so chega aqui depois de esgotar as tentativas
+    texto = ("<b>REP Campo — sincronização da carteira falhou</b>\n"
+             "%s\n\n%d tentativas, todas sem sucesso:\n%s\n\n"
+             "A base de clientes está congelada até isso ser resolvido — o "
+             "representante continua vendo a carteira da última sincronização."
+             % (datetime.now(timezone.utc).astimezone().strftime("%d/%m/%Y %H:%M"),
+                tentativas, "\n".join("• " + e[:180] for e in erros)))
+    avisar(texto)
+    return 1
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

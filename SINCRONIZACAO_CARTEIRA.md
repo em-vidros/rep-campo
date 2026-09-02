@@ -61,11 +61,61 @@ com permissão `600`, e acesso de leitura à carteira.
 > exportar a carteira para um arquivo e deixar a Vercel puxar por cron job. Sai
 > mais caro em partes móveis, e por isso não é a primeira opção.
 
+## Quando falha, tenta sozinha antes de incomodar
+
+Falha de rede e de banco costuma passar sozinha. Um alerta que toca todo dia
+vira ruído e para de ser lido.
+
+- **4 tentativas**, com espera de 30s, 2min e 5min entre elas
+- recuperou no meio do caminho? segue em frente e registra em qual tentativa
+- **esgotou as quatro?** aí sim manda o alerta no Telegram do Ricardo
+
+A mensagem diz o que quebrou, quantas vezes tentou e — o que importa — que
+**a base de clientes está congelada**: o representante segue vendo a carteira
+da última sincronização, sem saber que está desatualizada.
+
+### Configurar o canal
+
+No `.env` do servidor, uma das duas formas:
+
+```
+TELEGRAM_BOT_TOKEN=...
+TELEGRAM_CHAT_ID=...
+```
+
+ou, para reaproveitar o n8n que já manda o boletim diário:
+
+```
+SYNC_ALERTA_WEBHOOK=https://.../webhook/rep-campo-alerta
+```
+
+Sem nenhuma das duas, a rotina escreve o alerta no log e avisa que não há canal
+configurado — nunca falha em silêncio.
+
+---
+
+## Sobre o endpoint: a recomendação é não criar
+
+A primeira ideia era o painel expor `/api/carteira` e a rotina consumir por
+HTTP. **Não vale a pena**, por três razões:
+
+1. A rotina roda **no próprio servidor** onde a carteira já está. Ler um arquivo
+   local é mais simples e mais confiável que subir uma chamada HTTP para si mesmo.
+2. Criar rota nova no painel é **mudança em produção** num sistema que a
+   diretoria usa todo dia — precisa de aprovação, backup e rollback, para
+   resolver algo que um `open()` resolve.
+3. Endpoint é superfície nova. A decisão do Junior foi reduzir exposição do
+   servidor, não aumentar.
+
+**O desenho recomendado:** a rotina lê a saída que o pipeline de carteira já
+gera no servidor e escreve no Neon. Sem HTTP, sem rota, sem porta.
+
+O suporte a `CARTEIRA_URL` fica no código para o caso de a carteira um dia
+morar em outro lugar — mas não é o caminho para agora.
+
 ## O que ainda falta definir
 
-1. **O endereço do endpoint** no painel de clientes, e o formato do JSON
-   (o leitor já aceita `codigo`/`ID`/`cli_id` e `nome`/`Nome`).
-2. **Onde a rotina roda** — servidor interno é a recomendação.
-3. **Quem avisa se falhar.** Sincronização silenciosa que quebra é pior que
-   nenhuma: a base congela e ninguém percebe. Mínimo: alerta no Telegram, no
-   mesmo caminho do boletim diário.
+1. **Qual arquivo o pipeline de carteira gera no servidor** e onde ele fica —
+   é o que a rotina vai ler.
+2. **Se a `DATABASE_URL` do Neon pode ficar no servidor interno** (permissão 600).
+3. **O token do Telegram** ou a URL do webhook do n8n para o alerta.
