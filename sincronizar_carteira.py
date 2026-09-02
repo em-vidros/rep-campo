@@ -31,6 +31,7 @@ sys.path.insert(0, BASE_DIR)
 import psycopg
 
 import importar_carteira as base   # reaproveita leitura, curva ABC e municipios
+import rotas_oficiais
 
 SQL_UPSERT = """
     INSERT INTO clientes (codigo, nome, cidade, rota, tabela, vendedor,
@@ -159,9 +160,39 @@ def sincronizar(args):
         print("[--] a fonte devolveu ZERO cliente. Abortando para nao inativar a base.")
         sys.exit(1)
 
+    # a rota que vem da carteira esta incompleta; o mapa oficial corrige
+    corrigidas, sem_mapa = {}, set()
+    for c in clientes:
+        # a carteira traz "Sem Rota" e "sem Rota"; normaliza antes de comparar
+        if rotas_oficiais._chave(c.get("rota")) in ("sem rota", ""):
+            c["rota"] = ""
+        oficial = rotas_oficiais.rota_da_cidade(c.get("cidade"))
+        if not oficial:
+            if c.get("cidade"):
+                sem_mapa.add(c["cidade"])
+            continue
+        atual = (c.get("rota") or "").strip()
+        if rotas_oficiais._chave(atual) != rotas_oficiais._chave(oficial):
+            corrigidas.setdefault((atual or "(vazia)", oficial), 0)
+            corrigidas[(atual or "(vazia)", oficial)] += 1
+            c["rota"] = oficial
+
     clientes = base.curva_abc(clientes)
     print("[fonte] %s" % fonte)
     print("[fonte] %d cliente(s)" % len(clientes))
+    if corrigidas:
+        print()
+        print("[rota] corrigidas pelo mapa oficial de 30/04/2026:")
+        for (de, para), n in sorted(corrigidas.items(), key=lambda x: -x[1]):
+            print("   %4d cliente(s)  %-18s -> %s" % (n, de[:18], para))
+    if sem_mapa:
+        print()
+        print("[rota] %d cidade(s) fora do mapa oficial (rota da carteira mantida):"
+              % len(sem_mapa))
+        for c in sorted(sem_mapa)[:12]:
+            print("   %s" % c)
+        if len(sem_mapa) > 12:
+            print("   ... e mais %d" % (len(sem_mapa) - 12))
 
     con = conectar()
     cur = con.cursor()

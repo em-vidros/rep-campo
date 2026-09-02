@@ -189,3 +189,14 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .proc-nome .dica{display:inline;margin-left:6px;font-size:.68rem}
 .unidade-proc{margin-top:6px;padding:9px 10px;font-size:.85rem}
 .rotulo-unidade{margin-top:7px;font-size:.72rem}
+
+/* ---- logo EM Vidros ---- */
+.marca{display:flex;align-items:center;gap:10px}
+.marca .logo{height:30px;width:36px;display:block;object-fit:contain}
+.marca-app{font-weight:400;font-size:.92rem;opacity:.9;letter-spacing:.3px}
+.marca-app b{font-weight:700}
+.logo-login{height:88px;width:106px;display:block;margin:0 auto 16px;object-fit:contain}
+@media (max-width:420px){
+  .marca .logo{height:24px;width:29px}
+  .marca-app{font-size:.82rem}
+}

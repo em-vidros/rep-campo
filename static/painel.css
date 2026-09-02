@@ -3,8 +3,8 @@ body.painel{padding-bottom:60px}
 .painel .topo{padding:12px 22px}
 .painel .topo-acoes{display:flex;gap:16px;align-items:center}
 .painel .quem{font-size:.82rem;opacity:.85}
-.painel .marca em{font-style:normal;font-size:.72rem;background:rgba(255,255,255,.18);
-  padding:2px 8px;border-radius:20px;margin-left:6px;vertical-align:middle}
+.painel .marca em{font-style:normal;font-size:.68rem;background:rgba(255,255,255,.18);
+  padding:2px 9px;border-radius:20px;vertical-align:middle;letter-spacing:.4px}
 .painel .abas{top:56px}
 .painel .aba{flex:0 0 auto;padding:13px 22px}
 .conteudo{max-width:1180px;margin:0 auto;padding:0 22px}
