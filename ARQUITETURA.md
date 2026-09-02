@@ -94,6 +94,36 @@ recepção aparece para o representante antes da visita.
 
 ---
 
+## Decisão de hospedagem: fora do servidor da EM Vidros
+
+**Definido em 02/09/2026, a pedido do Junior, executado pela TI (Henrique).**
+
+O REP Campo **não roda no servidor da empresa**. Banco no Neon (Postgres na
+nuvem), fotos no Vercel Blob, aplicação na Vercel.
+
+Duas razões, nesta ordem:
+
+1. **Segurança** — publicar um app acessível de fora no servidor interno abriria
+   superfície de invasão. A decisão foi mantê-lo fora, isolado do ambiente que
+   roda o ERP, o painel de metas e a carteira.
+2. **Certificado** — na Vercel o HTTPS válido vem pronto, o que destrava o
+   funcionamento offline e o GPS. O certificado do servidor interno é
+   autoassinado e não tem conserto rápido.
+
+### O que isso implica, e precisa ficar dito
+
+- **Dado comercial de cliente passa a morar em nuvem de terceiros** — nome,
+  cidade, rota, vendedor, faturamento 12m, relatos de visita e fotos. A decisão
+  de segurança endereçou a exposição do servidor; a guarda do dado em terceiro
+  é consequência dela.
+- **Plano gratuito tem teto.** Fotos são o que cresce: ~250 KB cada, estimadas
+  em ~10 MB/mês. Cabe folgado no início, mas é o número a acompanhar.
+- **A coerência com os outros sistemas fica mais cara.** O app não lê mais a
+  mesma base do pipeline de carteira; a integração passa a exigir API ou
+  importação periódica. Ver "O que ainda não está coerente".
+
+---
+
 ## Planejamento de viagem alimenta o indicador sozinho
 
 A aderência ao roteiro (indicador A1 da metodologia) não tem digitação própria:
