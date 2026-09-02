@@ -94,6 +94,41 @@ configurado — nunca falha em silêncio.
 
 ---
 
+## Atualizar as rotas pela tela — sem tocar no servidor
+
+**Decidido em 02/09/2026.** O app roda fora do servidor da empresa. Em vez de
+abrir porta no servidor (para o app puxar) ou guardar a senha do banco lá (para
+o servidor empurrar), **o admin sobe a planilha pela tela** em `/importar`.
+
+Nada é exposto dos dois lados: nenhuma porta, nenhuma credencial fora do lugar,
+nenhuma conexão automática entre o servidor interno e a nuvem.
+
+### Como funciona
+
+1. Exporta a planilha **CIDADES, ROTAS E TABELAS** de onde ela estiver atualizada
+2. Em `/importar`, envia o arquivo — o app lê e mostra quantas cidades e rotas achou
+3. Clica em **Aplicar** — cada cliente é conferido contra a planilha
+
+**Nenhum cliente é apagado.** Só a rota e a tabela de preço mudam. O resultado
+mostra o que mudou, quais cidades não estavam na planilha (rota mantida) e quais
+a planilha atribui a outra base.
+
+### Por que a comparação é tolerante a grafia
+
+A planilha e a carteira escrevem a mesma cidade de formas diferentes: a planilha
+abrevia estado (*"Campestre do MA"*), abrevia título (*"Gov. Edison Lobão"*) e
+tem erro de digitação (*"Araguaíina"*, com um "i" a mais). Sem normalizar os dois
+lados, Araguaína — uma das cidades mais importantes da rota Balsas — ficava fora
+do mapa por detalhe de escrita.
+
+### O que continua valendo para a carteira de clientes
+
+A rotina diária (`sincronizar_carteira.py`) segue sendo o caminho para o
+**cadastro dos clientes**, que muda todo dia. A tela de importação é para a
+**planilha de rotas**, que muda poucas vezes por ano.
+
+---
+
 ## Sobre o endpoint: a recomendação é não criar
 
 A primeira ideia era o painel expor `/api/carteira` e a rotina consumir por

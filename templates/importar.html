@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REP Campo - Importar rotas</title>
+<meta name="theme-color" content="#0f3d2e">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/painel.css">
+</head>
+<body class="painel">
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca"><img src="/static/logo_em_vidros.svg" alt="EM Vidros" class="logo">
+      <span class="marca-app">REP <b>Campo</b></span> <em>importar</em></div>
+    <div class="topo-acoes">
+      <a class="sair" href="/painel">painel</a>
+      <a class="sair" href="/usuarios">usuários</a>
+      <a class="sair" href="/conta">conta</a>
+      <a class="sair" href="/logout">sair</a>
+    </div>
+  </div>
+</header>
+
+<main class="conteudo" style="max-width:820px">
+  <h2>Atualizar rotas das cidades</h2>
+  <p class="explica">O app roda fora do servidor da empresa. Em vez de abrir porta
+    no servidor ou guardar a senha do banco lá, <b>a planilha sobe por aqui</b> e a
+    atualização acontece dentro do ambiente do app. Nada é exposto dos dois lados.</p>
+
+  <div id="msg"></div>
+
+  <form id="form-rotas" class="cartao-form">
+    <h3 style="margin-top:0">1. Enviar a planilha</h3>
+    <p class="explica">A planilha <b>CIDADES, ROTAS E TABELAS</b>, com as colunas
+      CIDADE, BASE, ROTA e REGRA DE DESCONTO. Formato .xlsx, até 6 MB.</p>
+    <input type="file" id="f-planilha" accept=".xlsx,.xlsm" required>
+    <button class="btn primario" type="submit">Enviar planilha</button>
+  </form>
+
+  <div id="resultado-envio"></div>
+
+  <div id="passo-aplicar" class="cartao-form oculto" style="margin-top:18px">
+    <h3 style="margin-top:0">2. Aplicar na carteira</h3>
+    <p class="explica">Confere cada cliente contra a planilha e corrige a rota.
+      <b>Nenhum cliente é apagado</b> — só a rota e a tabela de preço mudam.</p>
+    <button id="btn-aplicar" class="btn primario" type="button">Aplicar às 1.457 fichas de cliente</button>
+  </div>
+
+  <div id="resultado-aplicar"></div>
+</main>
+<script src="/static/importar.js"></script>
+</body>
+</html>

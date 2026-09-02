@@ -55,6 +55,15 @@ TABELAS = [
             responsavel TEXT,
             criada_em TEXT NOT NULL
         )"""),
+    ("rotas_cidades", """
+        CREATE TABLE IF NOT EXISTS rotas_cidades (
+            chave TEXT PRIMARY KEY,
+            cidade TEXT NOT NULL,
+            base TEXT,
+            rota TEXT,
+            tabela TEXT,
+            atualizado_em TEXT NOT NULL
+        )"""),
     ("viagem_clientes", """
         CREATE TABLE IF NOT EXISTS viagem_clientes (
             id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

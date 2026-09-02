@@ -924,6 +924,25 @@ def ciclo_do_municipio(cidade):
     return CICLO_PADRAO
 
 
+def _chave_cidade(cidade):
+    """Normaliza cidade para comparar entre planilha e carteira.
+
+    As duas escrevem diferente: a planilha abrevia estado ("Campestre do MA")
+    e titulo ("Gov. Edison Lobao"), e tem erro de digitacao ("Araguaiina").
+    """
+    t = unicodedata.normalize("NFKD", str(cidade or "")).encode("ascii", "ignore").decode()
+    t = t.split("/")[0]
+    t = re.sub(r"[-_.]+", " ", t).lower()
+    t = re.sub(r"\s+", " ", t).strip()
+    for padrao, troca in ((r"\bdo ma\b", "do maranhao"), (r"\bdo to\b", "do tocantins"),
+                          (r"\bdo pa\b", "do para"), (r"\bdo pi\b", "do piaui"),
+                          (r"\bgov\b", "governador"), (r"\bpres\b", "presidente"),
+                          (r"\bsto\b", "santo"), (r"\bsta\b", "santa")):
+        t = re.sub(padrao, troca, t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return {"araguaiina": "araguaina"}.get(t, t)
+
+
 def _norm(txt):
     t = unicodedata.normalize("NFKD", str(txt or "")).encode("ascii", "ignore").decode()
     return t.lower().strip()
@@ -1708,6 +1727,112 @@ def api_viagem_remove(vid, cid):
 def viagens():
     return render_template("viagens.html", nome=session.get("nome"),
                            papel=session.get("papel"))
+
+
+# --------------------------------------------------------------------------
+# Importar carteira e rotas pela tela
+# --------------------------------------------------------------------------
+# O app roda fora do servidor da empresa. Em vez de o servidor empurrar dados
+# para ca (credencial do banco no servidor) ou o app puxar de la (porta aberta
+# no servidor), o admin sobe o arquivo pela tela. Nada e exposto dos dois lados.
+MAX_ARQUIVO = 6 * 1024 * 1024
+
+
+@app.route("/importar")
+@admin_obrigatorio
+def tela_importar():
+    return render_template("importar.html", nome=session.get("nome"),
+                           papel=session.get("papel"))
+
+
+@app.route("/api/importar/rotas", methods=["POST"])
+@admin_obrigatorio
+def api_importar_rotas():
+    """Recebe a planilha CIDADES, ROTAS E TABELAS e substitui o mapa oficial."""
+    arq = request.files.get("arquivo")
+    if not arq or not arq.filename:
+        return jsonify({"erro": "arquivo_ausente"}), 400
+    dados = arq.read(MAX_ARQUIVO + 1)
+    if len(dados) > MAX_ARQUIVO:
+        return jsonify({"erro": "arquivo_grande"}), 413
+    try:
+        import openpyxl
+        from io import BytesIO
+        wb = openpyxl.load_workbook(BytesIO(dados), data_only=True, read_only=True)
+    except Exception as exc:
+        return jsonify({"erro": "nao_e_planilha", "detalhe": str(exc)[:160]}), 400
+
+    ws = wb[wb.sheetnames[0]]
+    linhas, cabecalho = [], None
+    for linha in ws.iter_rows(values_only=True):
+        if not linha or not linha[0]:
+            continue
+        if cabecalho is None:
+            cabecalho = [str(c or "").strip().upper() for c in linha]
+            if "CIDADE" not in cabecalho:
+                return jsonify({"erro": "sem_coluna_cidade",
+                                "colunas": cabecalho[:6]}), 400
+            continue
+        linhas.append([str(c or "").strip() for c in linha[:4]])
+    if not linhas:
+        return jsonify({"erro": "planilha_vazia"}), 400
+
+    db = get_db()
+    db.execute("DELETE FROM rotas_cidades")
+    for cidade, base, rota, tabela in [(l + ["", "", ""])[:4] for l in linhas]:
+        db.execute("""INSERT INTO rotas_cidades (chave, cidade, base, rota, tabela,
+                      atualizado_em) VALUES (%s,%s,%s,%s,%s,%s)
+                      ON CONFLICT (chave) DO UPDATE SET cidade=excluded.cidade,
+                      base=excluded.base, rota=excluded.rota, tabela=excluded.tabela,
+                      atualizado_em=excluded.atualizado_em""",
+                   (_chave_cidade(cidade), cidade, base, rota, tabela, _agora()))
+    db.commit()
+
+    itz = db.execute("SELECT COUNT(*) c FROM rotas_cidades WHERE LOWER(base)='imperatriz'").fetchone()["c"]
+    rotas = [r["rota"] for r in db.execute(
+        "SELECT DISTINCT rota FROM rotas_cidades WHERE LOWER(base)='imperatriz' "
+        "AND rota <> '' AND LOWER(rota) <> 'sem rota' ORDER BY rota")]
+    return jsonify({"ok": True, "cidades": len(linhas), "base_itz": itz,
+                    "rotas": rotas, "arquivo": arq.filename})
+
+
+@app.route("/api/importar/aplicar-rotas", methods=["POST"])
+@admin_obrigatorio
+def api_aplicar_rotas():
+    """Aplica o mapa importado sobre a carteira, sem apagar nada."""
+    db = get_db()
+    mapa = {r["chave"]: r for r in db.execute("SELECT * FROM rotas_cidades")}
+    if not mapa:
+        return jsonify({"erro": "importe_a_planilha_antes"}), 400
+
+    corrigidos, fora, outra_base = [], [], []
+    for c in db.execute("SELECT codigo, cidade, rota FROM clientes WHERE ativo = 1"):
+        m = mapa.get(_chave_cidade(c["cidade"]))
+        if not m:
+            fora.append(c["cidade"])
+            continue
+        if (m["base"] or "").lower() != "imperatriz":
+            outra_base.append(c["cidade"])
+            continue
+        nova = "" if (m["rota"] or "").strip().lower() in ("", "sem rota") else m["rota"].strip()
+        atual = (c["rota"] or "").strip()
+        if _chave_cidade(atual) != _chave_cidade(nova):
+            db.execute("UPDATE clientes SET rota = %s, tabela = COALESCE(NULLIF(%s,''), tabela) "
+                       "WHERE codigo = %s", (nova, m["tabela"], c["codigo"]))
+            corrigidos.append({"cidade": c["cidade"], "de": atual or "(sem rota)",
+                               "para": nova or "(sem rota)"})
+    db.commit()
+
+    from collections import Counter
+    resumo = Counter((x["de"], x["para"]) for x in corrigidos)
+    return jsonify({
+        "ok": True, "corrigidos": len(corrigidos),
+        "resumo": [{"de": d, "para": p, "clientes": n}
+                   for (d, p), n in resumo.most_common()],
+        "fora_da_planilha": sorted(set(fora))[:60],
+        "total_fora": len(set(fora)),
+        "de_outra_base": sorted(set(outra_base)),
+    })
 
 
 @app.route("/foto/<nome>")
