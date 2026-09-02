@@ -846,6 +846,111 @@ def api_gestor_experiencia():
     })
 
 
+# --------------------------------------------------------------------------
+# Conta e usuarios
+# --------------------------------------------------------------------------
+SENHA_MIN = 8
+
+
+def _hash(senha):
+    # pbkdf2 explicito: o default do Werkzeug 3 e scrypt, ausente em builds
+    # do Python sem OpenSSL completo.
+    return generate_password_hash(senha, method="pbkdf2:sha256")
+
+
+@app.route("/conta", methods=["GET", "POST"])
+@login_obrigatorio
+def conta():
+    """Cada um troca a propria senha. Exige a senha atual."""
+    aviso = erro = None
+    if request.method == "POST":
+        atual = request.form.get("atual") or ""
+        nova = request.form.get("nova") or ""
+        repetir = request.form.get("repetir") or ""
+        db = get_db()
+        row = db.execute("SELECT senha_hash FROM usuarios WHERE id = ?",
+                         (session["uid"],)).fetchone()
+        if not row or not check_password_hash(row["senha_hash"], atual):
+            erro = "Senha atual incorreta."
+        elif len(nova) < SENHA_MIN:
+            erro = "A senha nova precisa de pelo menos %d caracteres." % SENHA_MIN
+        elif nova != repetir:
+            erro = "A confirmacao nao confere."
+        elif nova == atual:
+            erro = "A senha nova tem que ser diferente da atual."
+        else:
+            db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+                       (_hash(nova), session["uid"]))
+            db.commit()
+            aviso = "Senha alterada."
+    return render_template("conta.html", aviso=aviso, erro=erro,
+                           nome=session.get("nome"), papel=session.get("papel"))
+
+
+@app.route("/usuarios")
+@gestor_obrigatorio
+def usuarios():
+    return render_template("usuarios.html", nome=session.get("nome"))
+
+
+@app.route("/api/gestor/usuarios")
+@gestor_obrigatorio
+def api_usuarios():
+    rows = get_db().execute(
+        "SELECT id, login, nome, papel, ativo, criado_em FROM usuarios ORDER BY ativo DESC, nome"
+    ).fetchall()
+    return jsonify({"usuarios": [dict(r) for r in rows], "eu": session["uid"]})
+
+
+@app.route("/api/gestor/usuarios", methods=["POST"])
+@gestor_obrigatorio
+def api_criar_usuario():
+    d = request.get_json(silent=True) or {}
+    login_txt = re.sub(r"[^a-z0-9._-]", "", (d.get("login") or "").strip().lower())[:30]
+    nome = (d.get("nome") or "").strip()[:80]
+    papel = d.get("papel") if d.get("papel") in ("rep", "gestor") else "rep"
+    senha = d.get("senha") or ""
+    if not login_txt or not nome:
+        return jsonify({"erro": "login_e_nome_obrigatorios"}), 400
+    if len(senha) < SENHA_MIN:
+        return jsonify({"erro": "senha_curta"}), 400
+    db = get_db()
+    if db.execute("SELECT 1 FROM usuarios WHERE login = ?", (login_txt,)).fetchone():
+        return jsonify({"erro": "login_ja_existe"}), 409
+    db.execute("INSERT INTO usuarios (login, nome, senha_hash, papel, base, ativo, criado_em)"
+               " VALUES (?,?,?,?,'ITZ',1,?)",
+               (login_txt, nome, _hash(senha), papel, _agora()))
+    db.commit()
+    return jsonify({"ok": True, "login": login_txt})
+
+
+@app.route("/api/gestor/usuarios/<int:uid>", methods=["PATCH"])
+@gestor_obrigatorio
+def api_alterar_usuario(uid):
+    d = request.get_json(silent=True) or {}
+    db = get_db()
+    alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (uid,)).fetchone()
+    if not alvo:
+        return jsonify({"erro": "nao_encontrado"}), 404
+
+    if "ativo" in d:
+        if uid == session["uid"]:
+            return jsonify({"erro": "nao_pode_desativar_a_si_mesmo"}), 400
+        db.execute("UPDATE usuarios SET ativo = ? WHERE id = ?",
+                   (1 if d["ativo"] else 0, uid))
+    if "papel" in d and d["papel"] in ("rep", "gestor"):
+        if uid == session["uid"] and d["papel"] != "gestor":
+            return jsonify({"erro": "nao_pode_rebaixar_a_si_mesmo"}), 400
+        db.execute("UPDATE usuarios SET papel = ? WHERE id = ?", (d["papel"], uid))
+    if "senha" in d:
+        if len(d["senha"] or "") < SENHA_MIN:
+            return jsonify({"erro": "senha_curta"}), 400
+        db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+                   (_hash(d["senha"]), uid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
 @app.route("/foto/<nome>")
 @login_obrigatorio
 def foto(nome):

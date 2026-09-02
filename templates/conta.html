@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REP Campo - Minha conta</title>
+<meta name="theme-color" content="#0f3d2e">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/painel.css">
+</head>
+<body class="painel">
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca">REP <span>Campo</span></div>
+    <div class="topo-acoes">
+      <a class="sair" href="/">app do rep</a>
+      {% if papel == 'gestor' %}<a class="sair" href="/painel">painel</a>
+      <a class="sair" href="/usuarios">usuários</a>{% endif %}
+      <a class="sair" href="/logout">sair</a>
+    </div>
+  </div>
+</header>
+
+<main class="conteudo" style="max-width:520px">
+  <h2>Minha conta</h2>
+  <p class="explica">Você está logado como <b>{{ nome }}</b>.</p>
+
+  {% if aviso %}<div class="alerta info">{{ aviso }}</div>{% endif %}
+  {% if erro %}<div class="alerta erro">{{ erro }}</div>{% endif %}
+
+  <form method="post" class="cartao-form">
+    <h3 style="margin-top:0">Trocar senha</h3>
+    <label>Senha atual
+      <input type="password" name="atual" autocomplete="current-password" required>
+    </label>
+    <label>Senha nova <small class="dica">mínimo 8 caracteres</small>
+      <input type="password" name="nova" autocomplete="new-password" minlength="8" required>
+    </label>
+    <label>Repita a senha nova
+      <input type="password" name="repetir" autocomplete="new-password" minlength="8" required>
+    </label>
+    <button class="btn primario" type="submit">Salvar senha</button>
+  </form>
+</main>
+</body>
+</html>

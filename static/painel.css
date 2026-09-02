@@ -137,3 +137,10 @@ tbody tr.nunca{background:#fdecea}
 @media (max-width: 400px){
   .cartoes-larg{grid-template-columns:1fr}
 }
+
+/* formularios de conta e usuarios */
+.cartao-form{background:#fff;border:1px solid var(--borda);border-radius:var(--raio);padding:18px}
+.cartao-form label{margin-top:12px}
+.cartao-form .btn{margin-top:18px}
+.cartao-form .dupla{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:700px){ .cartao-form .dupla{grid-template-columns:1fr} }

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REP Campo - Usuários</title>
+<meta name="theme-color" content="#0f3d2e">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/painel.css">
+</head>
+<body class="painel">
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca">REP <span>Campo</span> <em>usuários</em></div>
+    <div class="topo-acoes">
+      <a class="sair" href="/painel">painel</a>
+      <a class="sair" href="/conta">minha conta</a>
+      <a class="sair" href="/logout">sair</a>
+    </div>
+  </div>
+</header>
+
+<main class="conteudo">
+  <h2>Usuários</h2>
+  <div id="msg"></div>
+
+  <div class="tabela-rolagem">
+    <table id="tab-usuarios">
+      <thead><tr><th>Nome</th><th>Login</th><th>Papel</th><th>Situação</th><th>Ações</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <h3 style="margin-top:26px">Novo usuário</h3>
+  <form id="form-novo" class="cartao-form">
+    <div class="dupla">
+      <label>Nome<input id="n-nome" required placeholder="Nome completo"></label>
+      <label>Login<input id="n-login" required placeholder="sem espaço, minúsculo"></label>
+    </div>
+    <div class="dupla">
+      <label>Papel
+        <select id="n-papel">
+          <option value="rep">Representante — só as próprias fichas</option>
+          <option value="gestor">Gestor — vê tudo e administra</option>
+        </select>
+      </label>
+      <label>Senha inicial<input id="n-senha" type="password" minlength="8" required
+             placeholder="mínimo 8 caracteres"></label>
+    </div>
+    <button class="btn primario" type="submit">Criar usuário</button>
+    <p class="explica">Peça para a pessoa trocar a senha no primeiro acesso, em
+      <b>Minha conta</b>.</p>
+  </form>
+</main>
+<script src="/static/usuarios.js"></script>
+</body>
+</html>
