@@ -1,10 +1,13 @@
 # -*- coding: utf-8 -*-
 """
 REP Campo - registro de visitas do representante comercial (base Itz).
-Flask + SQLite. PWA offline-first.
+Flask + Postgres. PWA offline-first, publicado na Vercel.
+
+O esquema do banco mora no setup_db.py, nao aqui. O app nunca cria tabela, porque
+a funcao da Vercel sobe em varios processos ao mesmo tempo e o CREATE do Postgres
+toma trava exclusiva.
 
 Padroes seguidos (EMVIDROS_TECH_PADROES.md):
-  - init_db() idempotente com PRAGMA table_info + ALTER TABLE
   - prints em ASCII puro
   - sem senha em texto claro no codigo
 """
@@ -12,23 +15,34 @@ import base64
 import json
 import os
 import re
-import secrets
-import sqlite3
 import unicodedata
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
-from flask import (Flask, g, jsonify, redirect, render_template, request,
-                   send_from_directory, session, url_for)
+import psycopg
+import requests
+from flask import (Flask, Response, g, jsonify, redirect, render_template,
+                   request, send_from_directory, session, url_for)
+from psycopg.rows import dict_row
 from werkzeug.security import check_password_hash, generate_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DADOS_DIR = os.path.join(BASE_DIR, "dados")
-FOTOS_DIR = os.path.join(DADOS_DIR, "fotos")
-DB_PATH = os.environ.get("REP_DB", os.path.join(DADOS_DIR, "rep_campo.db"))
-SECRET_PATH = os.path.join(DADOS_DIR, "secret.key")
 
-os.makedirs(FOTOS_DIR, exist_ok=True)
+
+def carregar_env():
+    """Le o .env do projeto no teste local. Na Vercel as variaveis ja vem prontas."""
+    caminho = os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(caminho):
+        return
+    for linha in open(caminho, encoding="utf-8"):
+        linha = linha.strip()
+        if not linha or linha.startswith("#") or "=" not in linha:
+            continue
+        chave, valor = linha.split("=", 1)
+        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
+
+
+carregar_env()
 
 TIPOS = {
     "comercial":    {"label": "Comercial",            "foto": "opcional"},
@@ -205,17 +219,13 @@ STATUS_OCORRENCIA = ["aberta", "em_andamento", "resolvida"]
 
 
 def _secret_key():
-    env = os.environ.get("REP_SECRET_KEY")
-    if env:
-        return env
-    if os.path.exists(SECRET_PATH):
-        with open(SECRET_PATH, "r") as fh:
-            return fh.read().strip()
-    key = secrets.token_hex(32)
-    with open(SECRET_PATH, "w") as fh:
-        fh.write(key)
-    os.chmod(SECRET_PATH, 0o600)
-    return key
+    # Sem disco e sem chave sorteada na partida: cada instancia da Vercel sortearia
+    # uma diferente e o login de uma nao valeria na outra. Faltando a variavel, o
+    # app tem que morrer alto, nao inventar chave.
+    chave = os.environ.get("REP_SECRET_KEY")
+    if not chave:
+        raise RuntimeError("REP_SECRET_KEY nao definida nas variaveis de ambiente")
+    return chave
 
 
 # root_path/instance_path explicitos: sem isso o Flask chama os.getcwd(), que
@@ -225,7 +235,9 @@ app = Flask(__name__, root_path=BASE_DIR,
             instance_path=os.path.join(BASE_DIR, "instance"))
 app.secret_key = _secret_key()
 app.config.update(
-    MAX_CONTENT_LENGTH=12 * 1024 * 1024,          # 12 MB por requisicao
+    # A borda da Vercel recusa acima de 4,5 MB com um 413 que o Flask nem ve.
+    # Manter abaixo disso faz o limite ser nosso, com resposta que o app controla.
+    MAX_CONTENT_LENGTH=4 * 1024 * 1024,           # 4 MB por requisicao
     SESSION_COOKIE_HTTPONLY=True,                 # JS da pagina nao le o cookie
     SESSION_COOKIE_SAMESITE="Lax",                # corta CSRF entre sites
     # Secure exige HTTPS. Fica desligado so no teste local por HTTP.
@@ -252,9 +264,12 @@ RE_UUID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{7,63}$")
 # --------------------------------------------------------------------------
 def get_db():
     if "db" not in g:
-        g.db = sqlite3.connect(DB_PATH)
-        g.db.row_factory = sqlite3.Row
-        g.db.execute("PRAGMA foreign_keys = ON")
+        url = os.environ.get("DATABASE_URL")
+        if not url:
+            raise RuntimeError("DATABASE_URL nao definida nas variaveis de ambiente")
+        # prepare_threshold=None porque a URL aponta para o pooler do Neon, que
+        # roda em modo transacao e nao guarda prepared statement entre requisicoes.
+        g.db = psycopg.connect(url, row_factory=dict_row, prepare_threshold=None)
     return g.db
 
 
@@ -265,212 +280,9 @@ def close_db(_exc):
         db.close()
 
 
-SCHEMA = {
-    "usuarios": """
-        CREATE TABLE IF NOT EXISTS usuarios (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            login TEXT UNIQUE NOT NULL,
-            nome TEXT NOT NULL,
-            senha_hash TEXT NOT NULL,
-            papel TEXT NOT NULL DEFAULT 'rep',
-            base TEXT NOT NULL DEFAULT 'ITZ',
-            ativo INTEGER NOT NULL DEFAULT 1,
-            criado_em TEXT NOT NULL
-        )""",
-    "clientes": """
-        CREATE TABLE IF NOT EXISTS clientes (
-            codigo TEXT PRIMARY KEY,
-            nome TEXT NOT NULL,
-            cidade TEXT,
-            rota TEXT,
-            tabela TEXT,
-            vendedor TEXT,
-            vol_12m REAL DEFAULT 0,
-            curva TEXT,
-            base TEXT DEFAULT 'ITZ',
-            origem TEXT,
-            ativo INTEGER NOT NULL DEFAULT 1,
-            atualizado_em TEXT
-        )""",
-    "viagens": """
-        CREATE TABLE IF NOT EXISTS viagens (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nome TEXT NOT NULL,
-            inicio TEXT,
-            fim TEXT,
-            rota TEXT,
-            observacao TEXT,
-            status TEXT NOT NULL DEFAULT 'planejada',
-            criada_por TEXT NOT NULL,
-            responsavel TEXT,
-            criada_em TEXT NOT NULL
-        )""",
-    "viagem_clientes": """
-        CREATE TABLE IF NOT EXISTS viagem_clientes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            viagem_id INTEGER NOT NULL,
-            cliente_codigo TEXT,
-            cliente_nome TEXT NOT NULL,
-            municipio TEXT,
-            motivo TEXT,
-            ordem INTEGER DEFAULT 0,
-            visitado INTEGER NOT NULL DEFAULT 0,
-            ficha_uuid TEXT,
-            visitado_em TEXT
-        )""",
-    "experiencia": """
-        CREATE TABLE IF NOT EXISTS experiencia (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ficha_uuid TEXT NOT NULL,
-            cliente_codigo TEXT,
-            cliente_nome TEXT,
-            etapa TEXT NOT NULL,
-            metrica TEXT NOT NULL,
-            nota INTEGER NOT NULL,
-            comentario TEXT,
-            unidade TEXT,
-            registrado_em TEXT NOT NULL,
-            usuario_login TEXT
-        )""",
-    "anexos": """
-        CREATE TABLE IF NOT EXISTS anexos (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            ficha_uuid TEXT NOT NULL,
-            arquivo TEXT NOT NULL,
-            tipo TEXT,
-            descricao TEXT,
-            criado_em TEXT NOT NULL
-        )""",
-    "ocorrencias": """
-        CREATE TABLE IF NOT EXISTS ocorrencias (
-            numero TEXT PRIMARY KEY,
-            aberta_em TEXT NOT NULL,
-            aberta_por TEXT NOT NULL,
-            setor TEXT NOT NULL DEFAULT 'Comercial',
-            canal TEXT NOT NULL DEFAULT 'Visita do representante',
-            cliente_codigo TEXT,
-            cliente_nome TEXT NOT NULL,
-            municipio TEXT,
-            tipo TEXT,
-            descricao TEXT,
-            pedido_nf TEXT,
-            status TEXT NOT NULL DEFAULT 'aberta',
-            responsavel TEXT,
-            prazo TEXT,
-            ficha_uuid TEXT,
-            foto_arquivo TEXT,
-            resolucao TEXT,
-            resolvida_em TEXT,
-            resolvida_por TEXT
-        )""",
-    "fichas": """
-        CREATE TABLE IF NOT EXISTS fichas (
-            uuid TEXT PRIMARY KEY,
-            usuario_id INTEGER NOT NULL,
-            usuario_login TEXT NOT NULL,
-            tipo TEXT NOT NULL,
-            cliente_codigo TEXT,
-            cliente_nome TEXT NOT NULL,
-            prospect INTEGER NOT NULL DEFAULT 0,
-            municipio TEXT,
-            objetivo TEXT,
-            relato TEXT,
-            proximo_passo TEXT,
-            prox_responsavel TEXT,
-            prox_data TEXT,
-            encaminhado_para TEXT,
-            lat REAL,
-            lon REAL,
-            precisao REAL,
-            criado_em_disp TEXT,
-            recebido_em TEXT NOT NULL,
-            foto_arquivo TEXT,
-            extra_json TEXT,
-            nivel_evidencia TEXT,
-            conta_indicador INTEGER NOT NULL DEFAULT 0,
-            relato_curto INTEGER NOT NULL DEFAULT 0
-        )""",
-}
+# O esquema mora no setup_db.py. Aqui ficou so o comentario para quem procurar
+# CREATE TABLE neste arquivo e nao achar.
 
-# colunas adicionadas depois da v1 entram aqui (migracao idempotente)
-COLUNAS_EXTRA = {
-    # a tabela ja existia sem esta coluna; CREATE TABLE IF NOT EXISTS nao
-    # adiciona coluna nova - por isso a migracao explicita
-    "experiencia": [
-        ("unidade", "TEXT"),
-    ],
-    "fichas": [
-        ("app_versao", "TEXT"),
-        # v2 (02/09/2026)
-        ("problema_tipo", "TEXT"),        # ocorrencia escolhida na lista
-        ("ocorrencia_num", "TEXT"),       # numero gerado pelo servidor (so tecnica)
-        ("ocorrencia_status", "TEXT"),    # aberta | resolvida
-        ("ocorrencia_fechada_em", "TEXT"),
-        ("exp_etapa", "TEXT"),            # etapa da jornada avaliada
-        ("exp_nota", "INTEGER"),          # 0 a 10
-        ("exp_comentario", "TEXT"),       # nas palavras do cliente
-        ("exp_metrica", "TEXT"),          # nps | csat | ces - derivada da etapa
-    ],
-}
-
-
-def init_db():
-    con = sqlite3.connect(DB_PATH)
-    cur = con.cursor()
-    for ddl in SCHEMA.values():
-        cur.execute(ddl)
-    # migracao de colunas novas sem perder dados (padrao EMVIDROS_TECH_PADROES)
-    for tabela, colunas in COLUNAS_EXTRA.items():
-        cur.execute("PRAGMA table_info(%s)" % tabela)
-        existentes = {row[1] for row in cur.fetchall()}
-        for nome, tipo in colunas:
-            if nome not in existentes:
-                cur.execute("ALTER TABLE %s ADD COLUMN %s %s" % (tabela, nome, tipo))
-                print("[db] coluna adicionada: %s.%s" % (tabela, nome))
-    # ocorrencias que nasceram embutidas na ficha migram para a tabela propria
-    cur.execute("SELECT COUNT(*) FROM ocorrencias")
-    if cur.fetchone()[0] == 0:
-        cur.execute("""
-            INSERT OR IGNORE INTO ocorrencias
-                (numero, aberta_em, aberta_por, setor, canal, cliente_codigo,
-                 cliente_nome, municipio, tipo, descricao, status, responsavel,
-                 prazo, ficha_uuid, foto_arquivo, resolvida_em)
-            SELECT ocorrencia_num, recebido_em, usuario_login, 'Comercial',
-                   'Visita do representante', cliente_codigo, cliente_nome,
-                   municipio, problema_tipo, relato,
-                   COALESCE(ocorrencia_status, 'aberta'), prox_responsavel,
-                   prox_data, uuid, foto_arquivo, ocorrencia_fechada_em
-              FROM fichas WHERE ocorrencia_num IS NOT NULL
-        """)
-        if cur.rowcount:
-            print("[db] %d ocorrencia(s) migrada(s) para a tabela propria" % cur.rowcount)
-
-    # respostas que estavam dentro da ficha migram para a tabela propria
-    cur.execute("SELECT COUNT(*) FROM experiencia")
-    if cur.fetchone()[0] == 0:
-        cur.execute("""
-            INSERT INTO experiencia (ficha_uuid, cliente_codigo, cliente_nome,
-                etapa, metrica, nota, comentario, registrado_em, usuario_login)
-            SELECT uuid, cliente_codigo, cliente_nome, exp_etapa,
-                   COALESCE(exp_metrica,'csat'), exp_nota, exp_comentario,
-                   recebido_em, usuario_login
-              FROM fichas WHERE exp_nota IS NOT NULL AND exp_etapa IS NOT NULL
-        """)
-        if cur.rowcount:
-            print("[db] %d resposta(s) de experiencia migrada(s)" % cur.rowcount)
-
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_vc_viagem ON viagem_clientes(viagem_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_vc_cliente ON viagem_clientes(cliente_codigo)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_exp_ficha ON experiencia(ficha_uuid)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_exp_metrica ON experiencia(metrica)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_anexos_ficha ON anexos(ficha_uuid)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_oc_status ON ocorrencias(status)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_oc_cliente ON ocorrencias(cliente_codigo)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_fichas_usuario ON fichas(usuario_login)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_fichas_data ON fichas(recebido_em)")
-    cur.execute("CREATE INDEX IF NOT EXISTS ix_clientes_nome ON clientes(nome)")
-    con.commit()
-    con.close()
 
 
 # --------------------------------------------------------------------------
@@ -503,31 +315,50 @@ def gestor_obrigatorio(fn):
     return wrapper
 
 
-# Freio de forca bruta no login. Em memoria: o app tem 2-3 usuarios e um so
-# processo; nao justifica Redis. Zera quando o servico reinicia.
-TENTATIVAS = {}
+# Freio de forca bruta no login. Mora no banco, nao na memoria: cada requisicao da
+# Vercel pode cair num processo diferente, e um contador de processo nunca chega
+# ao limite.
 MAX_TENTATIVAS = 8
 JANELA_BLOQUEIO = timedelta(minutes=15)
 
 
 def _origem():
-    return request.remote_addr or "?"
+    # Atras do proxy da Vercel, remote_addr e sempre o proxy. O IP do visitante
+    # vem no X-Forwarded-For, primeiro da lista.
+    encaminhado = request.headers.get("X-Forwarded-For", "")
+    if encaminhado:
+        return encaminhado.split(",")[0].strip()[:60]
+    return (request.remote_addr or "?")[:60]
 
 
 def _bloqueado(chave):
-    reg = TENTATIVAS.get(chave)
-    if not reg:
+    row = get_db().execute(
+        "SELECT falhas, ultima FROM tentativas_login WHERE origem = %s",
+        (chave,)).fetchone()
+    if not row:
         return False
-    falhas, ultima = reg
-    if datetime.now(timezone.utc) - ultima > JANELA_BLOQUEIO:
-        TENTATIVAS.pop(chave, None)
+    if datetime.now(timezone.utc) - row["ultima"] > JANELA_BLOQUEIO:
         return False
-    return falhas >= MAX_TENTATIVAS
+    return row["falhas"] >= MAX_TENTATIVAS
 
 
 def _registrar_falha(chave):
-    falhas, _ = TENTATIVAS.get(chave, (0, None))
-    TENTATIVAS[chave] = (falhas + 1, datetime.now(timezone.utc))
+    db = get_db()
+    db.execute(
+        "INSERT INTO tentativas_login (origem, falhas, ultima) VALUES (%s, 1, %s) "
+        "ON CONFLICT (origem) DO UPDATE SET "
+        "  falhas = CASE WHEN tentativas_login.ultima < %s THEN 1 "
+        "                ELSE tentativas_login.falhas + 1 END, "
+        "  ultima = EXCLUDED.ultima",
+        (chave, datetime.now(timezone.utc),
+         datetime.now(timezone.utc) - JANELA_BLOQUEIO))
+    db.commit()
+
+
+def _limpar_falhas(chave):
+    db = get_db()
+    db.execute("DELETE FROM tentativas_login WHERE origem = %s", (chave,))
+    db.commit()
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -541,10 +372,10 @@ def login():
         login_txt = (request.form.get("login") or "").strip().lower()
         senha = request.form.get("senha") or ""
         row = get_db().execute(
-            "SELECT * FROM usuarios WHERE login = ? AND ativo = 1", (login_txt,)
+            "SELECT * FROM usuarios WHERE login = %s AND ativo = 1", (login_txt,)
         ).fetchone()
         if row and check_password_hash(row["senha_hash"], senha):
-            TENTATIVAS.pop(_origem(), None)
+            _limpar_falhas(_origem())
             session.clear()                 # sessao nova a cada login
             session.permanent = True
             session["uid"] = row["id"]
@@ -634,20 +465,109 @@ def _agora():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _float(valor):
+    """AVG e ROUND devolvem Decimal no psycopg, e o Flask serializa Decimal como
+    texto. A tela receberia "8.5" no lugar de 8.5 e a primeira conta viraria
+    concatenacao."""
+    return float(valor) if valor is not None else None
+
+
+def _media_float(d):
+    if "media" in d:
+        d["media"] = _float(d["media"])
+    return d
+
+
+def _inteiro(valor, padrao):
+    """int() de parametro de URL sem derrubar a rota. %slimite=abc dava 500."""
+    try:
+        return int(valor)
+    except (TypeError, ValueError):
+        return padrao
+
+
 def _slug(txt):
     txt = unicodedata.normalize("NFKD", txt or "").encode("ascii", "ignore").decode()
     return re.sub(r"[^a-zA-Z0-9]+", "-", txt).strip("-").lower()[:40] or "sem-nome"
 
 
-# assinatura dos formatos aceitos - so JPEG e PNG entram no disco
+# assinatura dos formatos aceitos - so JPEG e PNG sobem para o Blob
 ASSINATURAS = ((b"\xff\xd8\xff", "jpg"), (b"\x89PNG\r\n\x1a\n", "png"))
 
 
-def _salvar_foto(uuid_ficha, data_url):
-    """Grava a foto em disco. Retorna o nome do arquivo, ou None se recusar.
+# --------------------------------------------------------------------------
+# Fotos no Vercel Blob
+# --------------------------------------------------------------------------
+# A loja esta configurada como privada: quem pedir a URL sem o token recebe 403.
+# Isso importa porque a foto vem com a coordenada de GPS do cliente na mesma
+# ficha. O app le a foto pelo servidor e devolve para quem esta logado.
+BLOB_API = "https://blob.vercel-storage.com"
+BLOB_PASTA = "fotos/"
+BLOB_VERSAO = "7"          # a 11 e a 12 recusam a loja privada com "Invalid pathname"
+_BLOB_BASE = {}            # host da loja, aprendido na primeira chamada
 
-    O nome sai do uuid, que vem do celular - por isso o uuid ja chega validado
-    por RE_UUID e o caminho final e conferido contra FOTOS_DIR antes de gravar.
+
+def _blob_token():
+    token = os.environ.get("BLOB_READ_WRITE_TOKEN")
+    if not token:
+        raise RuntimeError("BLOB_READ_WRITE_TOKEN nao definida nas variaveis de ambiente")
+    return token
+
+
+def _blob_cabecalho(extra=None):
+    h = {"Authorization": "Bearer " + _blob_token(), "x-api-version": BLOB_VERSAO}
+    h.update(extra or {})
+    return h
+
+
+def _blob_gravar(nome, binario, tipo):
+    r = requests.put(
+        BLOB_API + "/" + BLOB_PASTA + nome,
+        headers=_blob_cabecalho({"x-content-type": tipo,
+                                 "x-vercel-blob-access": "private",
+                                 "x-add-random-suffix": "0",
+                                 "x-allow-overwrite": "1"}),
+        data=binario, timeout=25)
+    if r.status_code != 200:
+        return None
+    url = r.json().get("url") or ""
+    if url:
+        _BLOB_BASE["url"] = url[:-len(BLOB_PASTA + nome)]
+    return nome
+
+
+def _blob_endereco(nome):
+    """URL de leitura da foto. Pergunta ao Blob uma vez por processo e guarda o host."""
+    base = _BLOB_BASE.get("url")
+    if base:
+        return base + BLOB_PASTA + nome
+    r = requests.get(BLOB_API + "/", params={"prefix": BLOB_PASTA + nome, "limit": "1"},
+                     headers=_blob_cabecalho(), timeout=20)
+    if r.status_code != 200:
+        return None
+    blobs = r.json().get("blobs") or []
+    if not blobs:
+        return None
+    url = blobs[0]["url"]
+    _BLOB_BASE["url"] = url[:-len(BLOB_PASTA + nome)]
+    return url
+
+
+def _blob_ler(nome):
+    url = _blob_endereco(nome)
+    if not url:
+        return None, None
+    r = requests.get(url, headers={"Authorization": "Bearer " + _blob_token()}, timeout=25)
+    if r.status_code != 200:
+        return None, None
+    return r.content, r.headers.get("content-type", "application/octet-stream")
+
+
+def _salvar_foto(uuid_ficha, data_url):
+    """Sobe a foto para o Blob. Retorna o nome do arquivo, ou None se recusar.
+
+    O nome sai do uuid, que vem do celular, por isso o uuid ja chega validado por
+    RE_UUID. Sem barra no nome: a rota /foto so aceita nome sem caminho.
     """
     if not data_url or "," not in data_url:
         return None
@@ -658,7 +578,8 @@ def _salvar_foto(uuid_ficha, data_url):
         binario = base64.b64decode(b64, validate=True)
     except Exception:
         return None
-    if len(binario) > 6 * 1024 * 1024:
+    # 6 MB numa foto so nao cabe: o limite de corpo da requisicao inteira e 4 MB.
+    if len(binario) > 1024 * 1024:
         return None
 
     # a extensao vem do conteudo, nao do que o cliente declarou no cabecalho
@@ -667,15 +588,14 @@ def _salvar_foto(uuid_ficha, data_url):
         return None
 
     nome = "%s.%s" % (uuid_ficha, ext)
-    destino = os.path.abspath(os.path.join(FOTOS_DIR, nome))
-    if os.path.dirname(destino) != os.path.abspath(FOTOS_DIR):
-        return None                      # cinto e suspensorio contra path traversal
-    with open(destino, "wb") as fh:
-        fh.write(binario)
-    return nome
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+\.(jpg|png)", nome):
+        return None                      # cinto e suspensorio: nome sem barra
+    return _blob_gravar(nome, binario, "image/jpeg" if ext == "jpg" else "image/png")
 
 
-MAX_ANEXOS = 8
+# 8 evidencias mais a foto principal davam 3 MB numa ficha so, acima do que a
+# Vercel aceita por requisicao.
+MAX_ANEXOS = 3
 
 
 def _salvar_anexos(uuid_ficha, lista, db):
@@ -691,7 +611,7 @@ def _salvar_anexos(uuid_ficha, lista, db):
         if not nome:
             continue
         db.execute("INSERT INTO anexos (ficha_uuid, arquivo, tipo, descricao, criado_em)"
-                   " VALUES (?,?,?,?,?)",
+                   " VALUES (%s,%s,%s,%s,%s)",
                    (uuid_ficha, nome, str(a.get("tipo") or "")[:80] or None,
                     str(a.get("descricao") or "")[:300] or None, _agora()))
         gravados += 1
@@ -719,19 +639,17 @@ def _proxima_ocorrencia(db):
 
     Gerado no SERVIDOR, nao no celular: o aparelho pode estar offline e dois
     aparelhos gerariam o mesmo numero. O app mostra o numero depois do sync.
+
+    O numero sai de uma linha por ano na tabela contador_ocorrencias, incrementada
+    dentro do proprio INSERT. Ler o maior numero e somar 1 dava o mesmo numero para
+    duas instancias da Vercel atendendo dois representantes no mesmo segundo.
     """
     ano = datetime.now(timezone.utc).strftime("%Y")
-    prefixo = "OC-%s-" % ano
-    ultimo = db.execute(
-        "SELECT numero FROM ocorrencias WHERE numero LIKE ? "
-        "ORDER BY numero DESC LIMIT 1", (prefixo + "%",)).fetchone()
-    seq = 1
-    if ultimo and ultimo[0]:
-        try:
-            seq = int(ultimo[0].rsplit("-", 1)[1]) + 1
-        except (IndexError, ValueError):
-            seq = 1
-    return "%s%04d" % (prefixo, seq)
+    row = db.execute(
+        "INSERT INTO contador_ocorrencias (ano, ultimo) VALUES (%s, 1) "
+        "ON CONFLICT (ano) DO UPDATE SET ultimo = contador_ocorrencias.ultimo + 1 "
+        "RETURNING ultimo", (ano,)).fetchone()
+    return "OC-%s-%04d" % (ano, row["ultimo"])
 
 
 def _classificar(ficha, tem_foto):
@@ -771,17 +689,13 @@ def api_receber_fichas():
             continue
 
         # idempotencia: ja recebida em sync anterior -> confirma sem duplicar
-        if db.execute("SELECT 1 FROM fichas WHERE uuid = ?", (uuid_f,)).fetchone():
+        if db.execute("SELECT 1 FROM fichas WHERE uuid = %s", (uuid_f,)).fetchone():
             aceitas.append(uuid_f)
             continue
 
         foto_arq = _salvar_foto(uuid_f, ficha.get("foto"))
         nivel, tem_passo = _classificar(ficha, bool(foto_arq))
         relato = (ficha.get("relato") or "").strip()[:LIMITES_TEXTO["relato"]]
-
-        # visita tecnica abre ocorrencia numerada, para ser acompanhada
-        ocorrencia = _proxima_ocorrencia(db) if tipo == "tecnica" else None
-        status_oc = "aberta" if ocorrencia else None
 
         etapa = _texto(ficha, "exp_etapa")
         metrica = METRICA_POR_ETAPA.get(etapa or "", "csat") if etapa else None
@@ -794,82 +708,101 @@ def api_receber_fichas():
         except (TypeError, ValueError):
             nota = None
 
-        db.execute("""
-            INSERT INTO fichas (uuid, usuario_id, usuario_login, tipo, cliente_codigo,
-                cliente_nome, prospect, municipio, objetivo, relato, proximo_passo,
-                prox_responsavel, prox_data, encaminhado_para, lat, lon, precisao,
-                criado_em_disp, recebido_em, foto_arquivo, extra_json,
-                nivel_evidencia, conta_indicador, relato_curto, app_versao,
-                problema_tipo, ocorrencia_num, ocorrencia_status,
-                exp_etapa, exp_nota, exp_comentario, exp_metrica)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (
-            uuid_f, session["uid"], session["login"], tipo,
-            str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
-            1 if ficha.get("prospect") else 0,
-            _texto(ficha, "municipio"), _texto(ficha, "objetivo"), relato,
-            _texto(ficha, "proximo_passo"), _texto(ficha, "prox_responsavel"),
-            _texto(ficha, "prox_data"), _texto(ficha, "encaminhado_para"),
-            _num(ficha.get("lat")), _num(ficha.get("lon")), _num(ficha.get("precisao")),
-            _texto(ficha, "criado_em_disp"), _agora(), foto_arq,
-            json.dumps(ficha.get("extra") or {}, ensure_ascii=False)[:MAX_EXTRA_JSON],
-            nivel, 1 if tem_passo else 0,
-            1 if len(relato) < RELATO_MIN else 0,
-            _texto(ficha, "app_versao"),
-            _texto(ficha, "problema_tipo"), ocorrencia, status_oc,
-            etapa, nota, _texto(ficha, "exp_comentario"), metrica,
-        ))
+        # Uma ficha por transacao. No Postgres o primeiro erro aborta a transacao
+        # inteira, e sem isto uma nota fora de faixa na setima ficha jogaria fora
+        # as seis que ja tinham entrado.
+        try:
+            with db.transaction():
+                # visita tecnica abre ocorrencia numerada, para ser acompanhada
+                ocorrencia = _proxima_ocorrencia(db) if tipo == "tecnica" else None
+                status_oc = "aberta" if ocorrencia else None
+                db.execute("""
+                    INSERT INTO fichas (uuid, usuario_id, usuario_login, tipo, cliente_codigo,
+                        cliente_nome, prospect, municipio, objetivo, relato, proximo_passo,
+                        prox_responsavel, prox_data, encaminhado_para, lat, lon, precisao,
+                        criado_em_disp, recebido_em, foto_arquivo, extra_json,
+                        nivel_evidencia, conta_indicador, relato_curto, app_versao,
+                        problema_tipo, ocorrencia_num, ocorrencia_status,
+                        exp_etapa, exp_nota, exp_comentario, exp_metrica)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    uuid_f, session["uid"], session["login"], tipo,
+                    str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
+                    1 if ficha.get("prospect") else 0,
+                    _texto(ficha, "municipio"), _texto(ficha, "objetivo"), relato,
+                    _texto(ficha, "proximo_passo"), _texto(ficha, "prox_responsavel"),
+                    _texto(ficha, "prox_data"), _texto(ficha, "encaminhado_para"),
+                    _num(ficha.get("lat")), _num(ficha.get("lon")), _num(ficha.get("precisao")),
+                    _texto(ficha, "criado_em_disp"), _agora(), foto_arq,
+                    json.dumps(ficha.get("extra") or {}, ensure_ascii=False)[:MAX_EXTRA_JSON],
+                    nivel, 1 if tem_passo else 0,
+                    1 if len(relato) < RELATO_MIN else 0,
+                    _texto(ficha, "app_versao"),
+                    _texto(ficha, "problema_tipo"), ocorrencia, status_oc,
+                    etapa, nota, _texto(ficha, "exp_comentario"), metrica,
+                ))
+                if ocorrencia:
+                    extra = ficha.get("extra") or {}
+                    db.execute("""
+                        INSERT INTO ocorrencias
+                            (numero, aberta_em, aberta_por, setor, canal, cliente_codigo,
+                             cliente_nome, municipio, tipo, descricao, pedido_nf, status,
+                             responsavel, prazo, ficha_uuid, foto_arquivo)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'aberta',%s,%s,%s,%s)
+                        ON CONFLICT (numero) DO NOTHING
+                    """, (ocorrencia, _agora(), session["login"], "Comercial",
+                          "Visita do representante",
+                          str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
+                          _texto(ficha, "municipio"), _texto(ficha, "problema_tipo"),
+                          relato, str(extra.get("pedido_nf") or "")[:60] or None,
+                          _texto(ficha, "prox_responsavel"), _texto(ficha, "prox_data"),
+                          uuid_f, foto_arq))
+
+                # respostas de experiencia: 1 nas visitas comuns, varias na Voz do Cliente
+                respostas = ficha.get("experiencia")
+                if not isinstance(respostas, list):
+                    respostas = ([{"etapa": etapa, "nota": nota,
+                                   "comentario": ficha.get("exp_comentario")}]
+                                 if etapa and nota is not None else [])
+                for resp in respostas[:12]:
+                    et = str(resp.get("etapa") or "")[:60]
+                    try:
+                        nt = int(resp.get("nota"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not et or not (0 <= nt <= 10):
+                        continue
+                    uni = str(resp.get("unidade") or "")[:40] or None
+                    db.execute("""INSERT INTO experiencia (ficha_uuid, cliente_codigo,
+                        cliente_nome, etapa, metrica, nota, comentario, unidade,
+                        registrado_em, usuario_login) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (uuid_f, str(ficha.get("cliente_codigo") or "")[:40] or None,
+                         cliente_nome, et, METRICA_POR_ETAPA.get(et, "csat"), nt,
+                         str(resp.get("comentario") or "")[:1200] or None, uni,
+                         _agora(), session["login"]))
+
+                # se o cliente estava no roteiro de uma viagem aberta, marca visitado.
+                # E o que alimenta a aderencia ao roteiro sem digitacao extra.
+                cod = str(ficha.get("cliente_codigo") or "")[:40]
+                if cod:
+                    # so no roteiro de quem registrou a visita. Sem o filtro por
+                    # dono, a visita de um marcava o cliente como visitado na
+                    # viagem aberta de todos os outros representantes.
+                    db.execute("""
+                        UPDATE viagem_clientes SET visitado = 1, ficha_uuid = %s, visitado_em = %s
+                         WHERE visitado = 0 AND cliente_codigo = %s AND viagem_id IN (
+                               SELECT id FROM viagens
+                                WHERE status IN ('planejada','em_andamento')
+                                  AND (criada_por = %s OR responsavel = %s))
+                    """, (uuid_f, _agora(), cod, session["login"], session["login"]))
+
+                _salvar_anexos(uuid_f, ficha.get("anexos"), db)
+        except Exception:
+            app.logger.exception("ficha %s recusada", uuid_f)
+            rejeitadas.append({"uuid": uuid_f[:64], "motivo": "erro_ao_gravar"})
+            continue
         if ocorrencia:
-            extra = ficha.get("extra") or {}
-            db.execute("""
-                INSERT OR IGNORE INTO ocorrencias
-                    (numero, aberta_em, aberta_por, setor, canal, cliente_codigo,
-                     cliente_nome, municipio, tipo, descricao, pedido_nf, status,
-                     responsavel, prazo, ficha_uuid, foto_arquivo)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,'aberta',?,?,?,?)
-            """, (ocorrencia, _agora(), session["login"], "Comercial",
-                  "Visita do representante",
-                  str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
-                  _texto(ficha, "municipio"), _texto(ficha, "problema_tipo"),
-                  relato, str(extra.get("pedido_nf") or "")[:60] or None,
-                  _texto(ficha, "prox_responsavel"), _texto(ficha, "prox_data"),
-                  uuid_f, foto_arq))
             ocorrencias.append({"uuid": uuid_f, "numero": ocorrencia})
-
-        # respostas de experiencia: 1 nas visitas comuns, varias na Voz do Cliente
-        respostas = ficha.get("experiencia")
-        if not isinstance(respostas, list):
-            respostas = ([{"etapa": etapa, "nota": nota,
-                           "comentario": ficha.get("exp_comentario")}]
-                         if etapa and nota is not None else [])
-        for resp in respostas[:12]:
-            et = str(resp.get("etapa") or "")[:60]
-            try:
-                nt = int(resp.get("nota"))
-            except (TypeError, ValueError):
-                continue
-            if not et or not (0 <= nt <= 10):
-                continue
-            uni = str(resp.get("unidade") or "")[:40] or None
-            db.execute("""INSERT INTO experiencia (ficha_uuid, cliente_codigo,
-                cliente_nome, etapa, metrica, nota, comentario, unidade,
-                registrado_em, usuario_login) VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (uuid_f, str(ficha.get("cliente_codigo") or "")[:40] or None,
-                 cliente_nome, et, METRICA_POR_ETAPA.get(et, "csat"), nt,
-                 str(resp.get("comentario") or "")[:1200] or None, uni,
-                 _agora(), session["login"]))
-
-        # se o cliente estava no roteiro de uma viagem aberta, marca visitado.
-        # E o que alimenta a aderencia ao roteiro sem digitacao extra.
-        cod = str(ficha.get("cliente_codigo") or "")[:40]
-        if cod:
-            db.execute("""
-                UPDATE viagem_clientes SET visitado = 1, ficha_uuid = ?, visitado_em = ?
-                 WHERE visitado = 0 AND cliente_codigo = ? AND viagem_id IN (
-                       SELECT id FROM viagens WHERE status IN ('planejada','em_andamento'))
-            """, (uuid_f, _agora(), cod))
-
-        _salvar_anexos(uuid_f, ficha.get("anexos"), db)
         aceitas.append(uuid_f)
 
     db.commit()
@@ -880,15 +813,15 @@ def api_receber_fichas():
 @app.route("/api/fichas")
 @login_obrigatorio
 def api_listar_fichas():
-    limite = min(int(request.args.get("limite", 50)), 300)
+    limite = min(_inteiro(request.args.get("limite"), 50), 300)
     if session.get("papel") == "gestor":
         rows = get_db().execute(
-            "SELECT * FROM fichas ORDER BY recebido_em DESC LIMIT ?", (limite,)
+            "SELECT * FROM fichas ORDER BY recebido_em DESC LIMIT %s", (limite,)
         ).fetchall()
     else:
         rows = get_db().execute(
-            "SELECT * FROM fichas WHERE usuario_login = ? "
-            "ORDER BY recebido_em DESC LIMIT ?", (session["login"], limite)
+            "SELECT * FROM fichas WHERE usuario_login = %s "
+            "ORDER BY recebido_em DESC LIMIT %s", (session["login"], limite)
         ).fetchall()
     return jsonify({"fichas": [dict(r) for r in rows]})
 
@@ -899,10 +832,10 @@ def api_resumo():
     """Numeros do mes corrente - base do relatorio semanal/mensal."""
     db = get_db()
     mes = datetime.now(timezone.utc).strftime("%Y-%m")
-    where = "WHERE substr(recebido_em,1,7) = ?"
+    where = "WHERE substr(recebido_em,1,7) = %s"
     args = [mes]
     if session.get("papel") != "gestor":
-        where += " AND usuario_login = ?"
+        where += " AND usuario_login = %s"
         args.append(session["login"])
     total = db.execute("SELECT COUNT(*) c FROM fichas " + where, args).fetchone()["c"]
     por_tipo = {r["tipo"]: r["c"] for r in db.execute(
@@ -968,24 +901,38 @@ def api_gestor_fichas():
     filtros, args = [], []
     mes = request.args.get("mes")
     if mes:
-        filtros.append("substr(recebido_em,1,7) = ?")
+        filtros.append("substr(recebido_em,1,7) = %s")
         args.append(mes)
     for campo, param in (("tipo", "tipo"), ("municipio", "municipio"),
                          ("usuario_login", "usuario"), ("nivel_evidencia", "nivel")):
         v = request.args.get(param)
         if v:
-            filtros.append("%s = ?" % campo)
+            filtros.append(f"{campo} = %s")
             args.append(v)
     busca = (request.args.get("busca") or "").strip()
     if busca:
-        filtros.append("(cliente_nome LIKE ? OR relato LIKE ? OR proximo_passo LIKE ?)")
+        # ILIKE porque o texto vem digitado. O LIKE do Postgres, ao contrario do
+        # SQLite, diferencia maiuscula de minuscula, e a busca voltaria vazia.
+        filtros.append("(cliente_nome ILIKE %s OR relato ILIKE %s OR proximo_passo ILIKE %s)")
         args += ["%%%s%%" % busca] * 3
 
     onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
-    limite = min(int(request.args.get("limite", 200)), 500)
+    limite = min(_inteiro(request.args.get("limite"), 200), 500)
     rows = get_db().execute(
-        "SELECT * FROM fichas %s ORDER BY recebido_em DESC LIMIT ?" % onde,
+        f"SELECT * FROM fichas {onde} ORDER BY recebido_em DESC LIMIT %s",
         args + [limite]).fetchall()
+
+    # Uma consulta para os anexos das ate 500 fichas, nao uma por ficha. Cada ida
+    # ao Neon passa pelo pooler e pela rede; 500 delas estouram o tempo da funcao.
+    db = get_db()
+    uuids = [r["uuid"] for r in rows]
+    por_ficha = {}
+    if uuids:
+        for a in db.execute(
+                "SELECT ficha_uuid, arquivo, tipo, descricao FROM anexos "
+                "WHERE ficha_uuid = ANY(%s) ORDER BY id", (uuids,)):
+            por_ficha.setdefault(a["ficha_uuid"], []).append(
+                {"arquivo": a["arquivo"], "tipo": a["tipo"], "descricao": a["descricao"]})
 
     fichas = []
     for r in rows:
@@ -994,20 +941,18 @@ def api_gestor_fichas():
             d["extra"] = json.loads(d.pop("extra_json") or "{}")
         except ValueError:
             d["extra"] = {}
-        d["anexos"] = [dict(a) for a in get_db().execute(
-            "SELECT arquivo, tipo, descricao FROM anexos WHERE ficha_uuid = ? "
-            "ORDER BY id", (d["uuid"],))]
+        d["anexos"] = por_ficha.get(d["uuid"], [])
         fichas.append(d)
 
-    db = get_db()
     return jsonify({
         "fichas": fichas,
         "opcoes": {
-            "meses": [x[0] for x in db.execute(
-                "SELECT DISTINCT substr(recebido_em,1,7) FROM fichas ORDER BY 1 DESC")],
-            "municipios": [x[0] for x in db.execute(
+            "meses": [x["mes"] for x in db.execute(
+                "SELECT DISTINCT substr(recebido_em,1,7) AS mes FROM fichas "
+                "ORDER BY 1 DESC")],
+            "municipios": [x["municipio"] for x in db.execute(
                 "SELECT DISTINCT municipio FROM fichas WHERE municipio <> '' ORDER BY 1")],
-            "usuarios": [x[0] for x in db.execute(
+            "usuarios": [x["usuario_login"] for x in db.execute(
                 "SELECT DISTINCT usuario_login FROM fichas ORDER BY 1")],
         },
     })
@@ -1023,16 +968,15 @@ def api_gestor_cobertura():
     """
     db = get_db()
     curvas = request.args.get("curvas", "A,B").split(",")
-    marcadores = ",".join("?" * len(curvas))
     rows = db.execute("""
         SELECT c.codigo, c.nome, c.cidade, c.curva, c.vol_12m, c.vendedor,
                MAX(f.recebido_em) AS ultima_visita,
                COUNT(f.uuid) AS total_visitas
           FROM clientes c
           LEFT JOIN fichas f ON f.cliente_codigo = c.codigo
-         WHERE c.ativo = 1 AND c.curva IN (%s)
+         WHERE c.ativo = 1 AND c.curva = ANY(%s)
          GROUP BY c.codigo
-    """ % marcadores, curvas).fetchall()
+    """, (curvas,)).fetchall()
 
     hoje = datetime.now(timezone.utc)
     saida = []
@@ -1077,7 +1021,7 @@ def api_gestor_ocorrencias():
                          ("setor", "setor"), ("tipo", "tipo")):
         v = request.args.get(param)
         if v:
-            filtros.append("%s = ?" % campo)
+            filtros.append(f"{campo} = %s")
             args.append(v)
     onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
     rows = get_db().execute(
@@ -1095,14 +1039,14 @@ def api_gestor_ocorrencias():
         saida.append(d)
 
     db = get_db()
-    cont = {x[0]: x[1] for x in db.execute(
-        "SELECT status, COUNT(*) FROM ocorrencias GROUP BY status")}
+    cont = {x["status"]: x["n"] for x in db.execute(
+        "SELECT status, COUNT(*) AS n FROM ocorrencias GROUP BY status")}
     return jsonify({
         "ocorrencias": saida,
         "abertas": cont.get("aberta", 0) + cont.get("em_andamento", 0),
         "resolvidas": cont.get("resolvida", 0),
-        "por_canal": {x[0]: x[1] for x in db.execute(
-            "SELECT canal, COUNT(*) FROM ocorrencias GROUP BY canal")},
+        "por_canal": {x["canal"]: x["n"] for x in db.execute(
+            "SELECT canal, COUNT(*) AS n FROM ocorrencias GROUP BY canal")},
         "canais": CANAIS, "setores": SETORES, "status": STATUS_OCORRENCIA,
     })
 
@@ -1114,30 +1058,30 @@ def api_atualizar_ocorrencia(numero):
         return jsonify({"erro": "numero_invalido"}), 400
     d = request.get_json(silent=True) or {}
     db = get_db()
-    if not db.execute("SELECT 1 FROM ocorrencias WHERE numero = ?", (numero,)).fetchone():
+    if not db.execute("SELECT 1 FROM ocorrencias WHERE numero = %s", (numero,)).fetchone():
         return jsonify({"erro": "nao_encontrada"}), 404
 
     if "status" in d:
         if d["status"] not in STATUS_OCORRENCIA:
             return jsonify({"erro": "status_invalido"}), 400
         if d["status"] == "resolvida":
-            db.execute("UPDATE ocorrencias SET status = 'resolvida', resolvida_em = ?, "
-                       "resolvida_por = ?, resolucao = COALESCE(?, resolucao) "
-                       "WHERE numero = ?",
+            db.execute("UPDATE ocorrencias SET status = 'resolvida', resolvida_em = %s, "
+                       "resolvida_por = %s, resolucao = COALESCE(%s, resolucao) "
+                       "WHERE numero = %s",
                        (_agora(), session["login"],
                         (d.get("resolucao") or "").strip()[:1000] or None, numero))
             # mantem a ficha de origem coerente
             db.execute("UPDATE fichas SET ocorrencia_status = 'resolvida', "
-                       "ocorrencia_fechada_em = ? WHERE ocorrencia_num = ?",
+                       "ocorrencia_fechada_em = %s WHERE ocorrencia_num = %s",
                        (_agora(), numero))
         else:
-            db.execute("UPDATE ocorrencias SET status = ?, resolvida_em = NULL, "
-                       "resolvida_por = NULL WHERE numero = ?", (d["status"], numero))
-            db.execute("UPDATE fichas SET ocorrencia_status = ?, "
-                       "ocorrencia_fechada_em = NULL WHERE ocorrencia_num = ?",
+            db.execute("UPDATE ocorrencias SET status = %s, resolvida_em = NULL, "
+                       "resolvida_por = NULL WHERE numero = %s", (d["status"], numero))
+            db.execute("UPDATE fichas SET ocorrencia_status = %s, "
+                       "ocorrencia_fechada_em = NULL WHERE ocorrencia_num = %s",
                        (d["status"], numero))
     if "responsavel" in d:
-        db.execute("UPDATE ocorrencias SET responsavel = ? WHERE numero = ?",
+        db.execute("UPDATE ocorrencias SET responsavel = %s WHERE numero = %s",
                    ((d["responsavel"] or "").strip()[:120] or None, numero))
     db.commit()
     return jsonify({"ok": True, "numero": numero})
@@ -1156,25 +1100,25 @@ def api_gestor_experiencia():
     mes = request.args.get("mes")
     base, args = "FROM experiencia WHERE 1=1", []
     if mes:
-        base += " AND substr(registrado_em,1,7) = ?"
+        base += " AND substr(registrado_em,1,7) = %s"
         args.append(mes)
 
     def bloco(metrica, corte):
         linhas = db.execute(
             "SELECT etapa, COUNT(*) n, ROUND(AVG(nota),1) media, "
-            "SUM(CASE WHEN nota >= ? THEN 1 ELSE 0 END) bons, "
-            "SUM(CASE WHEN nota <= ? THEN 1 ELSE 0 END) ruins "
-            + base + " AND metrica = ? GROUP BY etapa ORDER BY media ASC",
-            [corte, NPS_DETRATOR, metrica] + args).fetchall()
+            "SUM(CASE WHEN nota >= %s THEN 1 ELSE 0 END) bons, "
+            "SUM(CASE WHEN nota <= %s THEN 1 ELSE 0 END) ruins "
+            + base + " AND metrica = %s GROUP BY etapa ORDER BY media ASC",
+            [corte, NPS_DETRATOR] + args + [metrica]).fetchall()
         tot = db.execute(
             "SELECT COUNT(*) n, ROUND(AVG(nota),1) media, "
-            "SUM(CASE WHEN nota >= ? THEN 1 ELSE 0 END) bons, "
-            "SUM(CASE WHEN nota <= ? THEN 1 ELSE 0 END) ruins "
-            + base + " AND metrica = ?",
-            [corte, NPS_DETRATOR, metrica] + args).fetchone()
+            "SUM(CASE WHEN nota >= %s THEN 1 ELSE 0 END) bons, "
+            "SUM(CASE WHEN nota <= %s THEN 1 ELSE 0 END) ruins "
+            + base + " AND metrica = %s",
+            [corte, NPS_DETRATOR] + args + [metrica]).fetchone()
         n = tot["n"] or 0
-        return {"por_etapa": [dict(r) for r in linhas], "n": n,
-                "media": tot["media"], "bons": tot["bons"] or 0,
+        return {"por_etapa": [_media_float(dict(r)) for r in linhas], "n": n,
+                "media": _float(tot["media"]), "bons": tot["bons"] or 0,
                 "ruins": tot["ruins"] or 0,
                 "pct_bons": round(100.0 * (tot["bons"] or 0) / n) if n else None}
 
@@ -1189,9 +1133,9 @@ def api_gestor_experiencia():
         " AND comentario IS NOT NULL AND comentario <> '' "
         "ORDER BY nota ASC, registrado_em DESC LIMIT 40", args)]
 
-    expedicao = [dict(r) for r in db.execute(
+    expedicao = [_media_float(dict(r)) for r in db.execute(
         "SELECT unidade, COUNT(*) n, ROUND(AVG(nota),1) media, "
-        "SUM(CASE WHEN nota >= ? THEN 1 ELSE 0 END) bons " + base +
+        "SUM(CASE WHEN nota >= %s THEN 1 ELSE 0 END) bons " + base +
         " AND etapa = 'Atendimento da expedicao' AND unidade IS NOT NULL "
         "GROUP BY unidade ORDER BY media ASC", [CSAT_SATISFEITO] + args)]
 
@@ -1229,7 +1173,7 @@ def conta():
         nova = request.form.get("nova") or ""
         repetir = request.form.get("repetir") or ""
         db = get_db()
-        row = db.execute("SELECT senha_hash FROM usuarios WHERE id = ?",
+        row = db.execute("SELECT senha_hash FROM usuarios WHERE id = %s",
                          (session["uid"],)).fetchone()
         if not row or not check_password_hash(row["senha_hash"], atual):
             erro = "Senha atual incorreta."
@@ -1240,7 +1184,7 @@ def conta():
         elif nova == atual:
             erro = "A senha nova tem que ser diferente da atual."
         else:
-            db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+            db.execute("UPDATE usuarios SET senha_hash = %s WHERE id = %s",
                        (_hash(nova), session["uid"]))
             db.commit()
             aviso = "Senha alterada."
@@ -1276,10 +1220,10 @@ def api_criar_usuario():
     if len(senha) < SENHA_MIN:
         return jsonify({"erro": "senha_curta"}), 400
     db = get_db()
-    if db.execute("SELECT 1 FROM usuarios WHERE login = ?", (login_txt,)).fetchone():
+    if db.execute("SELECT 1 FROM usuarios WHERE login = %s", (login_txt,)).fetchone():
         return jsonify({"erro": "login_ja_existe"}), 409
     db.execute("INSERT INTO usuarios (login, nome, senha_hash, papel, base, ativo, criado_em)"
-               " VALUES (?,?,?,?,'ITZ',1,?)",
+               " VALUES (%s,%s,%s,%s,'ITZ',1,%s)",
                (login_txt, nome, _hash(senha), papel, _agora()))
     db.commit()
     return jsonify({"ok": True, "login": login_txt})
@@ -1290,23 +1234,23 @@ def api_criar_usuario():
 def api_alterar_usuario(uid):
     d = request.get_json(silent=True) or {}
     db = get_db()
-    alvo = db.execute("SELECT * FROM usuarios WHERE id = ?", (uid,)).fetchone()
+    alvo = db.execute("SELECT * FROM usuarios WHERE id = %s", (uid,)).fetchone()
     if not alvo:
         return jsonify({"erro": "nao_encontrado"}), 404
 
     if "ativo" in d:
         if uid == session["uid"]:
             return jsonify({"erro": "nao_pode_desativar_a_si_mesmo"}), 400
-        db.execute("UPDATE usuarios SET ativo = ? WHERE id = ?",
+        db.execute("UPDATE usuarios SET ativo = %s WHERE id = %s",
                    (1 if d["ativo"] else 0, uid))
     if "papel" in d and d["papel"] in ("rep", "gestor"):
         if uid == session["uid"] and d["papel"] != "gestor":
             return jsonify({"erro": "nao_pode_rebaixar_a_si_mesmo"}), 400
-        db.execute("UPDATE usuarios SET papel = ? WHERE id = ?", (d["papel"], uid))
+        db.execute("UPDATE usuarios SET papel = %s WHERE id = %s", (d["papel"], uid))
     if "senha" in d:
         if len(d["senha"] or "") < SENHA_MIN:
             return jsonify({"erro": "senha_curta"}), 400
-        db.execute("UPDATE usuarios SET senha_hash = ? WHERE id = ?",
+        db.execute("UPDATE usuarios SET senha_hash = %s WHERE id = %s",
                    (_hash(d["senha"]), uid))
     db.commit()
     return jsonify({"ok": True})
@@ -1363,24 +1307,23 @@ def api_sugestao():
     db = get_db()
     municipio = (request.args.get("municipio") or "").strip()
     rota = (request.args.get("rota") or "").strip()
-    limite = min(int(request.args.get("limite", 40)), 200)
+    limite = min(_inteiro(request.args.get("limite"), 40), 200)
 
     cidades = [x.strip() for x in (request.args.get("cidades") or "").split("|") if x.strip()]
 
     filtros, args = ["c.ativo = 1"], []
     if cidades:
-        marcas = ",".join("?" * len(cidades))
-        filtros.append("COALESCE(NULLIF(TRIM(c.cidade),''),'Sem cidade') IN (%s)" % marcas)
-        args += cidades
+        filtros.append("COALESCE(NULLIF(TRIM(c.cidade),''),'Sem cidade') = ANY(%s)")
+        args.append(cidades)
     elif municipio:
-        filtros.append("c.cidade LIKE ?")
+        filtros.append("c.cidade ILIKE %s")
         args.append("%%%s%%" % municipio)
     # cidades escolhidas mandam no escopo - podem ser de outra rota (passagem)
     if rota and not cidades:
         if rota == "Sem rota":
             filtros.append("(c.rota IS NULL OR TRIM(c.rota) = '' OR LOWER(TRIM(c.rota)) = 'sem rota')")
         else:
-            filtros.append("TRIM(c.rota) = ?")
+            filtros.append("TRIM(c.rota) = %s")
             args.append(rota)
 
     rows = db.execute("""
@@ -1392,9 +1335,9 @@ def api_sugestao():
                  WHERE e.cliente_codigo = c.codigo) AS pior_nota
           FROM clientes c
           LEFT JOIN fichas f ON f.cliente_codigo = c.codigo
-         WHERE %s
+         WHERE __FILTROS__
          GROUP BY c.codigo
-    """ % " AND ".join(filtros), args).fetchall()
+    """.replace("__FILTROS__", " AND ".join(filtros)), args).fetchall()
 
     hoje = datetime.now(timezone.utc)
     saida = []
@@ -1459,60 +1402,82 @@ def api_viagens():
         nome = (d.get("nome") or "").strip()[:120]
         if not nome:
             return jsonify({"erro": "nome_obrigatorio"}), 400
-        cur = db.execute("""INSERT INTO viagens (nome, inicio, fim, rota,
+        # RETURNING id porque o psycopg nao tem lastrowid
+        row = db.execute("""INSERT INTO viagens (nome, inicio, fim, rota,
             observacao, status, criada_por, responsavel, criada_em)
-            VALUES (?,?,?,?,?,'planejada',?,?,?)""",
+            VALUES (%s,%s,%s,%s,%s,'planejada',%s,%s,%s) RETURNING id""",
             (nome, (d.get("inicio") or "")[:20] or None,
              (d.get("fim") or "")[:20] or None, (d.get("rota") or "")[:80] or None,
              (d.get("observacao") or "")[:500] or None, session["login"],
-             (d.get("responsavel") or session["login"])[:80], _agora()))
+             (d.get("responsavel") or session["login"])[:80], _agora())).fetchone()
         db.commit()
-        return jsonify({"ok": True, "id": cur.lastrowid})
+        return jsonify({"ok": True, "id": row["id"]})
 
-    onde = "" if session.get("papel") == "gestor" else \
-        "WHERE responsavel = '%s' OR criada_por = '%s'" % (session["login"], session["login"])
-    viagens = []
-    for v in db.execute("SELECT * FROM viagens %s ORDER BY COALESCE(inicio, criada_em) DESC LIMIT 60" % onde):
-        d = dict(v)
-        cont = db.execute("SELECT COUNT(*) t, SUM(visitado) v FROM viagem_clientes "
-                          "WHERE viagem_id = ?", (v["id"],)).fetchone()
-        d["planejados"] = cont["t"] or 0
-        d["visitados"] = cont["v"] or 0
+    # O login ia direto para dentro do texto do SQL, entre aspas. Agora e parametro.
+    if session.get("papel") == "gestor":
+        onde, args = "", []
+    else:
+        onde = "WHERE responsavel = %s OR criada_por = %s"
+        args = [session["login"], session["login"]]
+    # uma consulta so: 1 + 60 idas ao banco por abertura de tela nao paga a viagem
+    viagens = [dict(v) for v in db.execute(f"""
+        SELECT v.*, COUNT(vc.id) AS planejados,
+               COALESCE(SUM(vc.visitado), 0) AS visitados
+          FROM viagens v
+          LEFT JOIN viagem_clientes vc ON vc.viagem_id = v.id
+          {onde}
+         GROUP BY v.id
+         ORDER BY COALESCE(v.inicio, v.criada_em) DESC
+         LIMIT 60""", args)]
+    for d in viagens:
         d["aderencia"] = (round(100.0 * d["visitados"] / d["planejados"])
                           if d["planejados"] else None)
-        viagens.append(d)
     return jsonify({"viagens": viagens})
+
+
+def _pode_na_viagem(v):
+    """Gestor ve tudo. Representante so mexe na viagem que criou ou conduz.
+
+    Sem isto, trocar o numero na URL dava acesso ao roteiro de qualquer outro.
+    """
+    return (session.get("papel") == "gestor"
+            or v["criada_por"] == session.get("login")
+            or v["responsavel"] == session.get("login"))
 
 
 @app.route("/api/viagens/<int:vid>", methods=["GET", "PATCH", "DELETE"])
 @login_obrigatorio
 def api_viagem(vid):
     db = get_db()
-    v = db.execute("SELECT * FROM viagens WHERE id = ?", (vid,)).fetchone()
+    v = db.execute("SELECT * FROM viagens WHERE id = %s", (vid,)).fetchone()
     if not v:
         return jsonify({"erro": "nao_encontrada"}), 404
 
+    if not _pode_na_viagem(v):
+        return jsonify({"erro": "sem_permissao"}), 403
+
     if request.method == "DELETE":
-        if session.get("papel") != "gestor" and v["criada_por"] != session["login"]:
-            return jsonify({"erro": "sem_permissao"}), 403
-        db.execute("DELETE FROM viagem_clientes WHERE viagem_id = ?", (vid,))
-        db.execute("DELETE FROM viagens WHERE id = ?", (vid,))
+        db.execute("DELETE FROM viagem_clientes WHERE viagem_id = %s", (vid,))
+        db.execute("DELETE FROM viagens WHERE id = %s", (vid,))
         db.commit()
         return jsonify({"ok": True})
 
     if request.method == "PATCH":
         d = request.get_json(silent=True) or {}
         if d.get("status") in ("planejada", "em_andamento", "concluida"):
-            db.execute("UPDATE viagens SET status = ? WHERE id = ?", (d["status"], vid))
+            db.execute("UPDATE viagens SET status = %s WHERE id = %s", (d["status"], vid))
         for campo in ("nome", "inicio", "fim", "rota", "observacao", "responsavel"):
             if campo in d:
-                db.execute("UPDATE viagens SET %s = ? WHERE id = ?" % campo,
+                # f-string, nao %: com o placeholder %s do psycopg o operador %
+                # do Python tentaria preencher o proprio placeholder. O campo vem
+                # da tupla escrita acima, entao nao ha porta para injecao.
+                db.execute(f"UPDATE viagens SET {campo} = %s WHERE id = %s",
                            (str(d[campo] or "")[:500] or None, vid))
         db.commit()
         return jsonify({"ok": True})
 
     clientes = [dict(r) for r in db.execute(
-        "SELECT * FROM viagem_clientes WHERE viagem_id = ? ORDER BY visitado, ordem, cliente_nome",
+        "SELECT * FROM viagem_clientes WHERE viagem_id = %s ORDER BY visitado, ordem, cliente_nome",
         (vid,))]
     d = dict(v)
     d["clientes"] = clientes
@@ -1530,23 +1495,28 @@ def api_viagem_add(vid):
     if not isinstance(lista, list):
         return jsonify({"erro": "lista_invalida"}), 400
     db = get_db()
-    if not db.execute("SELECT 1 FROM viagens WHERE id = ?", (vid,)).fetchone():
+    v = db.execute("SELECT * FROM viagens WHERE id = %s", (vid,)).fetchone()
+    if not v:
         return jsonify({"erro": "nao_encontrada"}), 404
-    ja = {r[0] for r in db.execute(
-        "SELECT cliente_codigo FROM viagem_clientes WHERE viagem_id = ?", (vid,))}
+    if not _pode_na_viagem(v):
+        return jsonify({"erro": "sem_permissao"}), 403
+
+    # ON CONFLICT no lugar de ler antes e inserir depois: dois toques no botao
+    # chegam em processos diferentes na Vercel, os dois leem o roteiro vazio e os
+    # dois inserem. O indice unico ux_vc_viagem_cliente e quem segura.
     add = 0
     for i, c in enumerate(lista[:200]):
         cod = str(c.get("codigo") or "")[:40] or None
         nome = str(c.get("nome") or "").strip()[:200]
-        if not nome or (cod and cod in ja):
+        if not nome:
             continue
-        db.execute("""INSERT INTO viagem_clientes (viagem_id, cliente_codigo,
-            cliente_nome, municipio, motivo, ordem) VALUES (?,?,?,?,?,?)""",
+        cur = db.execute("""INSERT INTO viagem_clientes (viagem_id, cliente_codigo,
+            cliente_nome, municipio, motivo, ordem) VALUES (%s,%s,%s,%s,%s,%s)
+            ON CONFLICT (viagem_id, cliente_codigo) WHERE cliente_codigo IS NOT NULL
+            DO NOTHING""",
             (vid, cod, nome, str(c.get("cidade") or "")[:120] or None,
              str(c.get("motivo") or "")[:300] or None, i))
-        if cod:
-            ja.add(cod)
-        add += 1
+        add += cur.rowcount
     db.commit()
     return jsonify({"ok": True, "adicionados": add})
 
@@ -1555,7 +1525,12 @@ def api_viagem_add(vid):
 @login_obrigatorio
 def api_viagem_remove(vid, cid):
     db = get_db()
-    db.execute("DELETE FROM viagem_clientes WHERE id = ? AND viagem_id = ?", (cid, vid))
+    v = db.execute("SELECT * FROM viagens WHERE id = %s", (vid,)).fetchone()
+    if not v:
+        return jsonify({"erro": "nao_encontrada"}), 404
+    if not _pode_na_viagem(v):
+        return jsonify({"erro": "sem_permissao"}), 403
+    db.execute("DELETE FROM viagem_clientes WHERE id = %s AND viagem_id = %s", (cid, vid))
     db.commit()
     return jsonify({"ok": True})
 
@@ -1572,7 +1547,13 @@ def viagens():
 def foto(nome):
     if not re.fullmatch(r"[A-Za-z0-9_\-]+\.(jpg|png)", nome or ""):
         return "", 404
-    return send_from_directory(FOTOS_DIR, nome)
+    binario, tipo = _blob_ler(nome)
+    if binario is None:
+        return "", 404
+    # private, porque a foto sai daqui so para quem esta logado e o cache do
+    # navegador nao pode servir ela para o proximo usuario do mesmo aparelho.
+    return Response(binario, mimetype=tipo,
+                    headers={"Cache-Control": "private, max-age=3600"})
 
 
 @app.route("/saude")
@@ -1580,11 +1561,12 @@ def saude():
     try:
         n = get_db().execute("SELECT COUNT(*) c FROM clientes").fetchone()["c"]
         return jsonify({"ok": True, "clientes": n, "hora": _agora()})
-    except Exception as exc:
-        return jsonify({"ok": False, "erro": str(exc)}), 500
+    except Exception:
+        # sem str(exc): a rota e publica e a excecao do psycopg carrega host,
+        # porta e nome do banco.
+        app.logger.exception("saude falhou")
+        return jsonify({"ok": False, "erro": "banco_indisponivel"}), 500
 
-
-init_db()
 
 if __name__ == "__main__":
     porta = int(os.environ.get("PORT", 8010))
