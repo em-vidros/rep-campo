@@ -131,6 +131,7 @@ async function buscarSugestao() {
   const q = new URLSearchParams();
   q.set('cidades', [...cidadesMarcadas].join('|'));
   q.set('limite', '120');
+  if ($('s-parados').checked) q.set('parados', '1');
   const r = await fetch('/api/sugestao?' + q);
   if (!r.ok) return msg('Não foi possível buscar.', true);
   const d = await r.json();
@@ -147,6 +148,7 @@ async function buscarSugestao() {
           <div class="motivo">${esc(c.motivo)}</div>
         </div>
         <div class="ficha-selos">
+          ${c.dias_sem_comprar > 30 ? `<span class="selo pendente">sem comprar há ${c.dias_sem_comprar}d</span>` : ''}
           ${c.oc_abertas ? '<span class="selo pendente">ocorrência aberta</span>' : ''}
           ${c.pior_nota !== null && c.pior_nota <= 6 ? `<span class="selo media">nota ${c.pior_nota}</span>` : ''}
           <button class="btn-sec" data-add="${i}">${escolhidos.has(c.codigo) ? 'remover' : 'incluir'}</button>
@@ -178,7 +180,8 @@ $('btn-criar').onclick = async () => {
   const r = await fetch('/api/viagens', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      nome, rota: $('v-rota').value, inicio: $('v-inicio').value,
+      nome, rota: $('v-rota').value, tipo: $('v-tipo').value,
+      inicio: $('v-inicio').value,
       fim: $('v-fim').value, observacao: $('v-obs').value.trim() }) });
   const j = await r.json();
   if (!r.ok) return msg('Não foi possível criar a viagem.', true);

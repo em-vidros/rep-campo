@@ -113,6 +113,26 @@ gera no servidor e escreve no Neon. Sem HTTP, sem rota, sem porta.
 O suporte a `CARTEIRA_URL` fica no código para o caso de a carteira um dia
 morar em outro lugar — mas não é o caminho para agora.
 
+## O campo que mais importa: a data da última compra
+
+A fonte precisa mandar **quando o cliente comprou pela última vez**. Sem isso o
+app não distingue quem nunca comprou de quem comprava e parou — e o segundo é o
+cliente mais urgente de visitar.
+
+O leitor já aceita os nomes prováveis: `ultima_compra`, `Ultima Compra`,
+`ultima_venda` ou `dt_ultima_compra`. Também aproveita `pedidos_12m` /
+`Pedidos ERP` se vier.
+
+Com esse dado, a sugestão passa a pesar assim:
+
+| Situação | Peso |
+|---|---|
+| Sem comprar há mais de 90 dias | 120 |
+| Sem comprar há mais de 30 dias | 80 |
+| Sem compra nos últimos 12 meses (sem data, volume zero) | 45 |
+
+Trinta dias é a régua de churn da casa: vidraçaria compra toda semana.
+
 ## O que ainda falta definir
 
 1. **Qual arquivo o pipeline de carteira gera no servidor** e onde ele fica —

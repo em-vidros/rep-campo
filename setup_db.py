@@ -195,6 +195,12 @@ COLUNAS = [
     # a ficha guarda de qual viagem ela veio; NULL = visita avulsa, tipica da
     # cidade onde o representante mora, que nao precisa de plano de rota
     "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS viagem_id INTEGER",
+    # quem parou de comprar e o cliente mais urgente de visitar. Sem a data da
+    # ultima compra, nao da para distinguir de quem nunca comprou.
+    "ALTER TABLE clientes ADD COLUMN IF NOT EXISTS ultima_compra DATE",
+    "ALTER TABLE clientes ADD COLUMN IF NOT EXISTS pedidos_12m INTEGER",
+    # plano de visita local nao e viagem: mesma estrutura, sem estrada
+    "ALTER TABLE viagens ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'viagem'",
 ]
 
 

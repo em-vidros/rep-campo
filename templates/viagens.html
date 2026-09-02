@@ -55,6 +55,14 @@
           <select id="v-rota"><option value="">selecione a rota</option></select>
         </label>
       </div>
+      <div class="dupla">
+        <label>Tipo de plano
+          <select id="v-tipo">
+            <option value="viagem">Viagem — rota com estrada e pernoite</option>
+            <option value="local">Local — visitas na cidade, sem viagem</option>
+          </select>
+        </label>
+      </div>
       <div id="box-cidades" class="oculto">
         <label>Cidades desta viagem
           <small class="dica">A rota pode ser dividida — marque só as cidades que entram agora.</small>
@@ -84,6 +92,9 @@
     <h3 style="margin-top:24px">2. Quem visitar</h3>
     <div class="barra-filtros">
       <button id="s-buscar" class="btn-sec" type="button">Buscar sugestões nas cidades marcadas</button>
+      <label class="linha-check" style="margin:0">
+        <input type="checkbox" id="s-parados"> só quem parou de comprar
+      </label>
       <span id="aviso-filtro" class="dica"></span>
     </div>
     <p class="explica">Ordenado por prioridade: <b>ocorrência em aberto</b> pesa mais,

@@ -1354,6 +1354,7 @@ def api_sugestao():
     limite = min(_inteiro(request.args.get("limite"), 40), 200)
 
     cidades = [x.strip() for x in (request.args.get("cidades") or "").split("|") if x.strip()]
+    so_parados = request.args.get("parados") == "1"
 
     filtros, args = ["c.ativo = 1"], []
     if cidades:
@@ -1372,6 +1373,7 @@ def api_sugestao():
 
     rows = db.execute("""
         SELECT c.codigo, c.nome, c.cidade, c.rota, c.curva, c.vol_12m, c.vendedor,
+               c.ultima_compra, c.pedidos_12m,
                MAX(f.recebido_em) AS ultima_visita,
                (SELECT COUNT(*) FROM ocorrencias o
                  WHERE o.cliente_codigo = c.codigo AND o.status <> 'resolvida') AS oc_abertas,
@@ -1400,6 +1402,23 @@ def api_sugestao():
                 dias = None
 
         peso, motivos = 0, []
+
+        # sinal comercial mais forte: comprava e parou. Vidracaria compra toda
+        # semana - 30 dias sem pedido ja e churn pela regra da casa.
+        dias_sem_comprar = None
+        if r["ultima_compra"]:
+            dias_sem_comprar = (hoje.date() - r["ultima_compra"]).days
+            if dias_sem_comprar > 90:
+                peso += 120
+                motivos.append("sem comprar há %d dias" % dias_sem_comprar)
+            elif dias_sem_comprar > 30:
+                peso += 80
+                motivos.append("sem comprar há %d dias" % dias_sem_comprar)
+        elif not r["vol_12m"]:
+            # sem volume e sem data: nao compra ha pelo menos 12 meses
+            peso += 45
+            motivos.append("sem compra nos últimos 12 meses")
+
         if r["oc_abertas"]:
             peso += 100
             motivos.append("%d ocorrência(s) em aberto" % r["oc_abertas"])
@@ -1427,9 +1446,14 @@ def api_sugestao():
             "rota": r["rota"], "curva": r["curva"], "vol_12m": r["vol_12m"],
             "vendedor": r["vendedor"], "dias": dias, "ciclo": ciclo,
             "oc_abertas": r["oc_abertas"], "pior_nota": r["pior_nota"],
+            "ultima_compra": r["ultima_compra"].isoformat() if r["ultima_compra"] else None,
+            "dias_sem_comprar": dias_sem_comprar, "pedidos_12m": r["pedidos_12m"],
             "peso": round(peso), "motivo": " · ".join(motivos),
         })
 
+    if so_parados:
+        saida = [x for x in saida
+                 if (x["dias_sem_comprar"] or 0) > 30 or not x["vol_12m"]]
     saida.sort(key=lambda x: -x["peso"])
     municipios = sorted({x["cidade"] for x in saida if x["cidade"]})
     rotas = sorted({x["rota"] for x in saida if x["rota"]})
@@ -1446,14 +1470,17 @@ def api_viagens():
         nome = (d.get("nome") or "").strip()[:120]
         if not nome:
             return jsonify({"erro": "nome_obrigatorio"}), 400
+        # 'local' e o plano da cidade onde o representante mora: mesma estrutura
+        # de roteiro, sem estrada nem pernoite
+        tipo = d.get("tipo") if d.get("tipo") in ("viagem", "local") else "viagem"
         # RETURNING id porque o psycopg nao tem lastrowid
         row = db.execute("""INSERT INTO viagens (nome, inicio, fim, rota,
-            observacao, status, criada_por, responsavel, criada_em)
-            VALUES (%s,%s,%s,%s,%s,'planejada',%s,%s,%s) RETURNING id""",
+            observacao, status, criada_por, responsavel, criada_em, tipo)
+            VALUES (%s,%s,%s,%s,%s,'planejada',%s,%s,%s,%s) RETURNING id""",
             (nome, (d.get("inicio") or "")[:20] or None,
              (d.get("fim") or "")[:20] or None, (d.get("rota") or "")[:80] or None,
              (d.get("observacao") or "")[:500] or None, session["login"],
-             (d.get("responsavel") or session["login"])[:80], _agora())).fetchone()
+             (d.get("responsavel") or session["login"])[:80], _agora(), tipo)).fetchone()
         db.commit()
         return jsonify({"ok": True, "id": row["id"]})
 

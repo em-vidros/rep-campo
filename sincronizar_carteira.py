@@ -34,13 +34,16 @@ import importar_carteira as base   # reaproveita leitura, curva ABC e municipios
 
 SQL_UPSERT = """
     INSERT INTO clientes (codigo, nome, cidade, rota, tabela, vendedor,
-                          vol_12m, curva, base, origem, ativo, atualizado_em)
-    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
+                          vol_12m, curva, base, origem, ativo, atualizado_em,
+                          ultima_compra, pedidos_12m)
+    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s,%s,%s)
     ON CONFLICT(codigo) DO UPDATE SET
         nome=excluded.nome, cidade=excluded.cidade, rota=excluded.rota,
         tabela=excluded.tabela, vendedor=excluded.vendedor,
         vol_12m=excluded.vol_12m, curva=excluded.curva,
-        origem=excluded.origem, ativo=1, atualizado_em=excluded.atualizado_em
+        origem=excluded.origem, ativo=1, atualizado_em=excluded.atualizado_em,
+        ultima_compra=COALESCE(excluded.ultima_compra, clientes.ultima_compra),
+        pedidos_12m=COALESCE(excluded.pedidos_12m, clientes.pedidos_12m)
 """
 
 
@@ -54,9 +57,16 @@ def conectar():
 
 
 def gravar_cliente(cur, c, agora):
+    def inteiro(v):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
     cur.execute(SQL_UPSERT, (c["codigo"], c["nome"], c["cidade"], c["rota"],
                              c["tabela"], c["vendedor"], c["vol_12m"], c["curva"],
-                             c["base"], c["origem"], agora))
+                             c["base"], c["origem"], agora,
+                             c.get("ultima_compra") or None,
+                             inteiro(c.get("pedidos_12m"))))
 
 CARTEIRA_URL = os.environ.get("CARTEIRA_URL")
 CARTEIRA_TOKEN = os.environ.get("CARTEIRA_TOKEN")
@@ -125,6 +135,11 @@ def ler_do_painel(url):
             "tabela": str(r.get("tabela") or r.get("Tabela") or "").strip(),
             "vendedor": str(r.get("vendedor") or r.get("Vendedor") or "").strip(),
             "vol_12m": base.num(r.get("vol_12m") or r.get("Vol 12m (R$)")),
+            # o que diz se o cliente parou de comprar - o sinal mais forte
+            # para priorizar visita. Aceita os nomes mais provaveis da fonte.
+            "ultima_compra": (r.get("ultima_compra") or r.get("Ultima Compra")
+                              or r.get("ultima_venda") or r.get("dt_ultima_compra") or None),
+            "pedidos_12m": r.get("pedidos_12m") or r.get("Pedidos ERP") or None,
             "base": "ITZ", "origem": "painel_de_clientes",
         })
     return saida
