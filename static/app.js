@@ -35,6 +35,9 @@ const enviadasPor= ()   => tx('enviadas', 'readonly', s => s.getAll());
 const enviadaSalvar = f => tx('enviadas', 'readwrite', s => s.put(f));
 
 /* ------------------------------------------------------------------ estado */
+// Tres fichas por envio. Cada ficha carrega a foto principal mais ate tres
+// evidencias em base64, e a Vercel recusa requisicao acima de 4,5 MB.
+const LOTE_SYNC = 3;
 let CFG = { clientes: [], municipios: [], relato_min: 200 };
 let tipoAtual = null, fotoDataUrl = null, geo = { lat: null, lon: null, precisao: null };
 
@@ -358,14 +361,14 @@ function montarEvidencias(tipo) {
   box.innerHTML = `
     <fieldset class="bloco-evid">
       <legend>Evidências <b class="obrig">opcional</b></legend>
-      <small class="dica">${esc(foco)}. Até ${CFG.max_anexos || 8}.</small>
+      <small class="dica">${esc(foco)}. Até ${CFG.max_anexos || 3}.</small>
       <input type="file" id="f-anexo" accept="image/*" multiple>
       <div id="lista-anexos" class="lista-anexos"></div>
     </fieldset>`;
   anexos = [];
   $('f-anexo').addEventListener('change', ev => {
     [...ev.target.files].forEach(arq => comprimir(arq, dataUrl => {
-      if (anexos.length >= (CFG.max_anexos || 8)) return;
+      if (anexos.length >= (CFG.max_anexos || 3)) return;
       anexos.push({ foto: dataUrl, tipo: (CFG.tipos_evidencia || [])[0], descricao: '' });
       desenharAnexos();
     }));
@@ -579,7 +582,7 @@ async function sincronizar() {
   try {
     const resp = await fetch('/api/fichas', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ fichas: fila.slice(0, 10) }),
+      body: JSON.stringify({ fichas: fila.slice(0, LOTE_SYNC) }),
     });
     if (resp.status === 401) { aviso('Sessao expirou. Entre de novo.', true); return; }
     if (!resp.ok) throw new Error('http ' + resp.status);
@@ -595,10 +598,20 @@ async function sincronizar() {
     } else if ((dados.aceitas || []).length) {
       aviso(dados.aceitas.length + ' ficha(s) enviada(s).');
     }
+    for (const r of dados.rejeitadas || []) {
+      // Ficha que o servidor recusa nunca vai entrar. Sem tirar da fila, ela fica
+      // na frente para sempre e segura tudo que vier depois.
+      const f = fila.find(x => x.uuid === r.uuid);
+      await filaTirar(r.uuid);
+      if (f) { delete f.foto; delete f.anexos; f.recusada = r.motivo || 'recusada'; await enviadaSalvar(f); }
+    }
     if ((dados.rejeitadas || []).length)
-      aviso(dados.rejeitadas.length + ' ficha(s) recusada(s) pelo servidor.', true);
+      aviso(dados.rejeitadas.length + ' ficha(s) recusada(s). Veja em "Minhas fichas".', true);
   } catch (e) {
-    /* offline ou servidor fora - a fila continua guardada */
+    // Offline nao e erro: a fila continua guardada e tenta de novo. Erro do
+    // servidor tem que aparecer, senao o numero da fila fica parado sem
+    // explicacao nenhuma na tela.
+    if (navigator.onLine) aviso('Nao consegui enviar agora. Tento de novo em 1 minuto.', true);
   } finally {
     sincronizando = false;
     atualizarStatus();
@@ -693,7 +706,9 @@ async function renderFichas() {
   ];
   if (!todas.length) { box.innerHTML = '<div class="vazio">Nenhuma ficha ainda.</div>'; return; }
   box.innerHTML = todas.slice(0, 80).map(f => {
-    const selo = f._pendente ? '<span class="selo pendente">na fila</span>' : '<span class="selo forte">enviada</span>';
+    const selo = f.recusada ? `<span class="selo fraco">recusada: ${esc(f.recusada)}</span>`
+      : f._pendente ? '<span class="selo pendente">na fila</span>'
+      : '<span class="selo forte">enviada</span>';
     const d = new Date(f.criado_em_disp || Date.now());
     return `<div class="item"><div class="item-topo"><b>${esc(f.cliente_nome)}</b>${selo}</div>
       <div class="meta">${esc(f.tipo)} - ${esc(f.municipio || '')} - ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>

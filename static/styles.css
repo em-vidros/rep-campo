@@ -97,6 +97,7 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .selo.media{background:#fdf3e0;color:var(--aviso)}
 .selo.leve{background:#f0eeea;color:var(--cinza)}
 .selo.pendente{background:#fdecea;color:var(--alerta)}
+.selo.fraco{background:#fdecea;color:var(--alerta)}
 .cartoes{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:0 16px}
 .cartao{background:#fff;border:1px solid var(--borda);border-radius:var(--raio);padding:15px}
 .cartao .num{font-size:1.7rem;font-weight:700;color:var(--verde);line-height:1.1}

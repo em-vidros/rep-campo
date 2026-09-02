@@ -1,7 +1,8 @@
 /* REP Campo - service worker. Cache do app shell para funcionar offline. */
-const CACHE = 'rep-campo-v1';
+const CACHE = 'rep-campo-v2';
 const SHELL = [
-  '/', '/static/app.js', '/static/styles.css', '/manifest.webmanifest',
+  '/static/app.js', '/static/styles.css', '/static/viagens.js',
+  '/manifest.webmanifest',
 ];
 
 self.addEventListener('install', ev => {
