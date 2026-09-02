@@ -97,17 +97,24 @@
   <!-- ================= EXPERIENCIA ================= -->
   <section id="tela-experiencia" class="tela">
     <div id="cartoes-exp" class="cartoes-larg"></div>
-    <p class="explica">Coletada em <b>toda visita</b>, com a pergunta adequada ao tipo.
-      Promotor = nota 9–10 · Detrator = 0–6. As etapas piores aparecem primeiro.</p>
-    <div class="tabela-rolagem">
-      <table id="tab-exp">
-        <thead><tr><th>Etapa da jornada</th><th class="num">Respostas</th>
-          <th class="num">Média</th><th class="num">Promotores</th>
-          <th class="num">Detratores</th></tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <h3 style="margin:22px 0 8px">O que o cliente disse</h3>
+    <p class="explica">Coletada em <b>toda visita</b>, com a régua de 0 a 10 sempre —
+      o que muda é o que ela mede. <b>NPS</b> = lealdade à marca ("recomendaria?").
+      <b>CSAT</b> = satisfação com uma etapa. <b>CES</b> = esforço para resolver
+      ("foi fácil?"). Misturar as três numa média só produz número sem significado.</p>
+
+    <h3>CSAT por etapa da jornada <small class="dica">satisfeito = nota 8 ou mais</small></h3>
+    <div class="tabela-rolagem"><table id="tab-csat">
+      <thead><tr><th>Etapa</th><th class="num">Respostas</th><th class="num">Média</th>
+        <th class="num">Satisfeitos</th><th class="num">% satisfeitos</th></tr></thead>
+      <tbody></tbody></table></div>
+
+    <h3 style="margin-top:24px">CES — esforço no pós-venda <small class="dica">fácil = nota 8 ou mais</small></h3>
+    <div class="tabela-rolagem"><table id="tab-ces">
+      <thead><tr><th>Etapa</th><th class="num">Respostas</th><th class="num">Média</th>
+        <th class="num">Acharam fácil</th><th class="num">% fácil</th></tr></thead>
+      <tbody></tbody></table></div>
+
+    <h3 style="margin-top:24px">O que o cliente disse</h3>
     <div id="lista-verbatim" class="lista-gestor"></div>
   </section>
 

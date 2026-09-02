@@ -87,17 +87,41 @@ ETAPAS_JORNADA = [
     "Relacionamento geral",
 ]
 
-# A pergunta de experiencia muda conforme o tipo - pesquisa pertinente a
-# situacao, em vez de questionario igual para todos.
+# Cada etapa da jornada tem a metrica certa. Misturar as tres e chamar tudo
+# de NPS produz media com nome errado - e contamina o NPS relacional da
+# pesquisa CX formal, que mede outra coisa.
+#   NPS  = lealdade a marca ("recomendaria?"), baixa frequencia
+#   CSAT = satisfacao com UMA etapa ("como foi essa entrega?")
+#   CES  = esforco do cliente ("foi facil resolver?"), melhor em pos-venda
+METRICA_POR_ETAPA = {
+    "Relacionamento geral": "nps",
+    "Pos-venda e resolucao de problema": "ces",
+    "Cotacao e orcamento": "csat",
+    "Preco e condicao": "csat",
+    "Prazo prometido": "csat",
+    "Producao e acabamento": "csat",
+    "Entrega": "csat",
+    "Qualidade do produto": "csat",
+}
+
+# Corte de cada metrica na regua unica de 0 a 10 (o REP nao decora escalas).
+NPS_PROMOTOR, NPS_DETRATOR = 9, 6
+CSAT_SATISFEITO = 8          # top-2-box
+CES_FACIL = 8
+
+# A pergunta muda conforme o tipo de visita - pesquisa pertinente a situacao.
 PERGUNTA_EXPERIENCIA = {
     "comercial":    ("Cotacao e orcamento", "Como foi a ultima cotacao que fizemos pra voce?"),
     "cordialidade": ("Relacionamento geral", "De 0 a 10, o quanto recomendaria a EM Vidros?"),
-    "tecnica":      ("Pos-venda e resolucao de problema", "Como avalia nosso atendimento deste problema ate agora?"),
+    "tecnica":      ("Pos-venda e resolucao de problema", "De 0 a 10, o quanto foi FACIL resolver esse problema com a gente?"),
     "prospeccao":   ("Relacionamento geral", "O que te faria comprar da EM Vidros?"),
     "preco":        ("Preco e condicao", "Como avalia nosso preco frente ao prazo e a entrega?"),
     "voz":          ("Relacionamento geral", "De 0 a 10, o quanto recomendaria a EM Vidros?"),
     "evento":       ("Relacionamento geral", "Como a EM Vidros e vista no mercado hoje?"),
 }
+
+# NPS cansa se perguntado toda visita. CSAT e CES podem ser sempre.
+DIAS_MINIMOS_ENTRE_NPS = 90
 
 
 def _secret_key():
@@ -229,6 +253,7 @@ COLUNAS_EXTRA = {
         ("exp_etapa", "TEXT"),            # etapa da jornada avaliada
         ("exp_nota", "INTEGER"),          # 0 a 10
         ("exp_comentario", "TEXT"),       # nas palavras do cliente
+        ("exp_metrica", "TEXT"),          # nps | csat | ces - derivada da etapa
     ],
 }
 
@@ -393,6 +418,12 @@ def api_bootstrap():
         "problemas": PROBLEMAS_TECNICOS,
         "responsaveis": RESPONSAVEIS,
         "etapas_jornada": ETAPAS_JORNADA,
+        "metrica_por_etapa": METRICA_POR_ETAPA,
+        "dias_minimos_nps": DIAS_MINIMOS_ENTRE_NPS,
+        "ultimo_nps": {r["cliente_codigo"]: r["quando"] for r in db.execute(
+            "SELECT cliente_codigo, MAX(recebido_em) quando FROM fichas "
+            "WHERE exp_metrica = 'nps' AND cliente_codigo IS NOT NULL "
+            "GROUP BY cliente_codigo")},
         "pergunta_experiencia": PERGUNTA_EXPERIENCIA,
         "relato_min": RELATO_MIN,
         "gerado_em": _agora(),
@@ -529,6 +560,9 @@ def api_receber_fichas():
         ocorrencia = _proxima_ocorrencia(db) if tipo == "tecnica" else None
         status_oc = "aberta" if ocorrencia else None
 
+        etapa = _texto(ficha, "exp_etapa")
+        metrica = METRICA_POR_ETAPA.get(etapa or "", "csat") if etapa else None
+
         nota = ficha.get("exp_nota")
         try:
             nota = int(nota) if nota not in (None, "") else None
@@ -544,8 +578,8 @@ def api_receber_fichas():
                 criado_em_disp, recebido_em, foto_arquivo, extra_json,
                 nivel_evidencia, conta_indicador, relato_curto, app_versao,
                 problema_tipo, ocorrencia_num, ocorrencia_status,
-                exp_etapa, exp_nota, exp_comentario)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                exp_etapa, exp_nota, exp_comentario, exp_metrica)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             uuid_f, session["uid"], session["login"], tipo,
             str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
@@ -560,7 +594,7 @@ def api_receber_fichas():
             1 if len(relato) < RELATO_MIN else 0,
             _texto(ficha, "app_versao"),
             _texto(ficha, "problema_tipo"), ocorrencia, status_oc,
-            _texto(ficha, "exp_etapa"), nota, _texto(ficha, "exp_comentario"),
+            etapa, nota, _texto(ficha, "exp_comentario"), metrica,
         ))
         aceitas.append(uuid_f)
         if ocorrencia:
@@ -815,47 +849,56 @@ def api_resolver_ocorrencia(numero):
 @app.route("/api/gestor/experiencia")
 @gestor_obrigatorio
 def api_gestor_experiencia():
-    """Leitura da pesquisa de experiencia coletada nas visitas."""
+    """Leitura da pesquisa, com cada metrica calculada do seu jeito.
+
+    NPS  -> % promotores menos % detratores (so perguntas de recomendacao)
+    CSAT -> % de notas >= 8, por etapa da jornada
+    CES  -> % que achou facil (>= 8), no pos-venda
+    """
     db = get_db()
     mes = request.args.get("mes")
-    onde, args = "WHERE exp_nota IS NOT NULL", []
+    base, args = "FROM fichas WHERE exp_nota IS NOT NULL", []
     if mes:
-        onde += " AND substr(recebido_em,1,7) = ?"
+        base += " AND substr(recebido_em,1,7) = ?"
         args.append(mes)
-    linhas = db.execute(
-        "SELECT exp_etapa, COUNT(*) n, ROUND(AVG(exp_nota),1) media, "
-        "SUM(CASE WHEN exp_nota >= 9 THEN 1 ELSE 0 END) promotores, "
-        "SUM(CASE WHEN exp_nota <= 6 THEN 1 ELSE 0 END) detratores "
-        "FROM fichas " + onde + " GROUP BY exp_etapa ORDER BY media ASC", args
-    ).fetchall()
-    total = db.execute("SELECT COUNT(*) c, ROUND(AVG(exp_nota),1) m FROM fichas " + onde,
-                       args).fetchone()
-    prom = db.execute("SELECT SUM(CASE WHEN exp_nota>=9 THEN 1 ELSE 0 END) p, "
-                      "SUM(CASE WHEN exp_nota<=6 THEN 1 ELSE 0 END) d FROM fichas " + onde,
-                      args).fetchone()
-    n = total["c"] or 0
-    nps = round(100.0 * ((prom["p"] or 0) - (prom["d"] or 0)) / n) if n else None
+
+    def bloco(metrica, corte):
+        linhas = db.execute(
+            "SELECT exp_etapa, COUNT(*) n, ROUND(AVG(exp_nota),1) media, "
+            "SUM(CASE WHEN exp_nota >= ? THEN 1 ELSE 0 END) bons, "
+            "SUM(CASE WHEN exp_nota <= ? THEN 1 ELSE 0 END) ruins "
+            + base + " AND exp_metrica = ? GROUP BY exp_etapa ORDER BY media ASC",
+            [corte, NPS_DETRATOR, metrica] + args).fetchall()
+        tot = db.execute(
+            "SELECT COUNT(*) n, ROUND(AVG(exp_nota),1) media, "
+            "SUM(CASE WHEN exp_nota >= ? THEN 1 ELSE 0 END) bons, "
+            "SUM(CASE WHEN exp_nota <= ? THEN 1 ELSE 0 END) ruins "
+            + base + " AND exp_metrica = ?",
+            [corte, NPS_DETRATOR, metrica] + args).fetchone()
+        n = tot["n"] or 0
+        return {
+            "por_etapa": [dict(r) for r in linhas], "n": n, "media": tot["media"],
+            "bons": tot["bons"] or 0, "ruins": tot["ruins"] or 0,
+            "pct_bons": round(100.0 * (tot["bons"] or 0) / n) if n else None,
+        }
+
+    nps = bloco("nps", NPS_PROMOTOR)
+    nps["indice"] = (round(100.0 * (nps["bons"] - nps["ruins"]) / nps["n"])
+                     if nps["n"] else None)
+
     comentarios = [dict(r) for r in db.execute(
-        "SELECT cliente_nome, exp_etapa, exp_nota, exp_comentario, recebido_em "
-        "FROM fichas " + onde + " AND exp_comentario <> '' "
-        "ORDER BY exp_nota ASC, recebido_em DESC LIMIT 40", args)]
+        "SELECT cliente_nome, exp_etapa, exp_nota, exp_comentario, exp_metrica, recebido_em "
+        + base + " AND exp_comentario <> '' ORDER BY exp_nota ASC, recebido_em DESC LIMIT 40",
+        args)]
+
     return jsonify({
-        "por_etapa": [dict(r) for r in linhas],
-        "total": n, "media": total["m"], "nps": nps,
+        "nps": nps,
+        "csat": bloco("csat", CSAT_SATISFEITO),
+        "ces": bloco("ces", CES_FACIL),
         "comentarios": comentarios,
+        "cortes": {"nps_promotor": NPS_PROMOTOR, "nps_detrator": NPS_DETRATOR,
+                   "csat_satisfeito": CSAT_SATISFEITO, "ces_facil": CES_FACIL},
     })
-
-
-# --------------------------------------------------------------------------
-# Conta e usuarios
-# --------------------------------------------------------------------------
-SENHA_MIN = 8
-
-
-def _hash(senha):
-    # pbkdf2 explicito: o default do Werkzeug 3 e scrypt, ausente em builds
-    # do Python sem OpenSSL completo.
-    return generate_password_hash(senha, method="pbkdf2:sha256")
 
 
 @app.route("/conta", methods=["GET", "POST"])

@@ -237,29 +237,35 @@ async function carregarExperiencia() {
   const r = await fetch('/api/gestor/experiencia');
   if (!r.ok) return;
   const d = await r.json();
-  const cor = n => n === null ? '' : (n >= 50 ? '' : 'num-alerta');
+  const vazio = v => (v === null || v === undefined) ? '—' : v;
 
   $('cartoes-exp').innerHTML = `
-    <div class="cartao"><div class="num ${cor(d.nps)}">${d.nps === null ? '—' : d.nps}</div>
-      <div class="rot">NPS das visitas</div></div>
-    <div class="cartao"><div class="num">${d.media === null ? '—' : d.media}</div>
-      <div class="rot">nota média</div></div>
-    <div class="cartao"><div class="num">${d.total}</div>
+    <div class="cartao"><div class="num ${d.nps.indice !== null && d.nps.indice < 50 ? 'num-alerta' : ''}">${vazio(d.nps.indice)}</div>
+      <div class="rot">NPS relacional<br><small>${d.nps.n} resposta(s)</small></div></div>
+    <div class="cartao"><div class="num ${d.csat.pct_bons !== null && d.csat.pct_bons < 80 ? 'num-alerta' : ''}">${d.csat.pct_bons === null ? '—' : d.csat.pct_bons + '%'}</div>
+      <div class="rot">CSAT satisfeitos<br><small>${d.csat.n} resposta(s)</small></div></div>
+    <div class="cartao"><div class="num ${d.ces.pct_bons !== null && d.ces.pct_bons < 70 ? 'num-alerta' : ''}">${d.ces.pct_bons === null ? '—' : d.ces.pct_bons + '%'}</div>
+      <div class="rot">CES acharam fácil<br><small>${d.ces.n} resposta(s)</small></div></div>
+    <div class="cartao"><div class="num">${d.nps.n + d.csat.n + d.ces.n}</div>
       <div class="rot">clientes ouvidos</div></div>`;
 
-  document.querySelector('#tab-exp tbody').innerHTML = d.por_etapa.map(e => `
+  const linhas = (bloco, rotulo) => bloco.por_etapa.map(e => `
     <tr><td data-label="Etapa"><b>${esc(e.exp_etapa || '—')}</b></td>
       <td data-label="Respostas" class="num">${e.n}</td>
       <td data-label="Média" class="num"><b>${e.media}</b></td>
-      <td data-label="Promotores" class="num">${e.promotores}</td>
-      <td data-label="Detratores" class="num">${e.detratores}</td></tr>`).join('')
-    || '<tr><td colspan="5" class="explica">Nenhuma resposta ainda.</td></tr>';
+      <td data-label="${rotulo}" class="num">${e.bons}</td>
+      <td data-label="%" class="num">${Math.round(100 * e.bons / e.n)}%</td></tr>`).join('')
+    || `<tr><td colspan="5" class="explica">Nenhuma resposta ainda.</td></tr>`;
 
+  document.querySelector('#tab-csat tbody').innerHTML = linhas(d.csat, 'Satisfeitos');
+  document.querySelector('#tab-ces tbody').innerHTML = linhas(d.ces, 'Acharam fácil');
+
+  const selo = m => m === 'nps' ? 'NPS' : m === 'ces' ? 'CES' : 'CSAT';
   $('lista-verbatim').innerHTML = d.comentarios.map(c => `
     <div class="ficha"><div class="ficha-cab">
       <div><b>${esc(c.cliente_nome)}</b>
-        <div class="sub">${esc(c.exp_etapa || '—')} · ${dataBR(c.recebido_em)}</div>
+        <div class="sub">${esc(selo(c.exp_metrica))} · ${esc(c.exp_etapa || '—')} · ${dataBR(c.recebido_em)}</div>
         <p style="margin:8px 0 0;font-size:.92rem">"${esc(c.exp_comentario)}"</p></div>
-      <div class="ficha-selos"><span class="selo ${c.exp_nota >= 9 ? 'forte' : c.exp_nota <= 6 ? 'pendente' : 'media'}">nota ${c.exp_nota}</span></div>
+      <div class="ficha-selos"><span class="selo ${c.exp_nota >= 8 ? 'forte' : c.exp_nota <= 6 ? 'pendente' : 'media'}">nota ${c.exp_nota}</span></div>
     </div></div>`).join('') || '<div class="vazio">Nenhum comentário registrado.</div>';
 }

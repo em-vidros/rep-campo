@@ -161,23 +161,27 @@ function montarCampos(tipo) {
    Um toque obrigatorio (a nota); o resto e opcional, para nao passar de 2 min. */
 function montarExperiencia(tipo) {
   const box = $('bloco-experiencia');
-  const par = (CFG.pergunta_experiencia || {})[tipo] || ['Relacionamento geral', 'Como esta sendo a experiencia com a gente?'];
+  const par = (CFG.pergunta_experiencia || {})[tipo] ||
+    ['Relacionamento geral', 'Como esta sendo a experiencia com a gente?'];
   const [etapaPadrao, pergunta] = par;
   const prospect = tipo === 'prospeccao';
 
   box.innerHTML = `
     <fieldset class="bloco-exp">
       <legend>Experiencia do cliente <b class="obrig">${prospect ? 'opcional' : 'nota obrigatoria'}</b></legend>
-      <small class="dica">${esc(pergunta)}</small>
+      <small class="dica" id="txt-pergunta">${esc(pergunta)}</small>
       <div class="notas" id="notas-exp">
         ${Array.from({ length: 11 }, (_, n) =>
           `<button type="button" class="nota" data-nota="${n}">${n}</button>`).join('')}
       </div>
+      <div class="reguas"><span id="regua-min"></span><span id="regua-max"></span></div>
+      <div id="aviso-nps" class="aviso-curto oculto"></div>
       <label>O que ele avaliou
         <select id="f-exp-etapa">
           ${(CFG.etapas_jornada || []).map(e =>
             `<option value="${esc(e)}"${e === etapaPadrao ? ' selected' : ''}>${esc(e)}</option>`).join('')}
         </select>
+        <small class="dica" id="txt-metrica"></small>
       </label>
       <label>Nas palavras dele (opcional)
         <textarea id="f-exp-comentario" rows="2" placeholder="o que ele falou, do jeito que falou"></textarea>
@@ -190,6 +194,43 @@ function montarExperiencia(tipo) {
     box.dataset.nota = b.dataset.nota;
   });
   delete box.dataset.nota;
+
+  $('f-exp-etapa').onchange = ajustarMetrica;
+  ajustarMetrica();
+}
+
+/* A regua e sempre 0-10, mas o que ela significa muda com a etapa. */
+const TEXTO_METRICA = {
+  nps:  { nome: 'NPS', min: '0 = nao recomendaria', max: '10 = recomendaria com certeza',
+          dica: 'NPS - mede lealdade a marca. Nao repita no mesmo cliente toda visita.' },
+  csat: { nome: 'CSAT', min: '0 = muito insatisfeito', max: '10 = muito satisfeito',
+          dica: 'CSAT - satisfacao com esta etapa especifica.' },
+  ces:  { nome: 'CES', min: '0 = muito dificil', max: '10 = muito facil',
+          dica: 'CES - esforco do cliente. Em pos-venda prevê recompra melhor que "recomendaria".' },
+};
+
+function ajustarMetrica() {
+  const etapa = ($('f-exp-etapa') || {}).value;
+  const metrica = (CFG.metrica_por_etapa || {})[etapa] || 'csat';
+  const t = TEXTO_METRICA[metrica];
+  $('regua-min').textContent = t.min;
+  $('regua-max').textContent = t.max;
+  $('txt-metrica').textContent = t.dica;
+
+  // NPS cansa: avisa se este cliente ja respondeu ha pouco tempo
+  const alerta = $('aviso-nps');
+  alerta.classList.add('oculto');
+  if (metrica !== 'nps') return;
+  const c = CFG.clientes.find(x => x.nome === ($('f-cliente').value || '').trim());
+  const quando = c && (CFG.ultimo_nps || {})[c.codigo];
+  if (!quando) return;
+  const dias = Math.floor((Date.now() - new Date(quando)) / 86400000);
+  const minimo = CFG.dias_minimos_nps || 90;
+  if (dias < minimo) {
+    alerta.textContent = `Este cliente já respondeu "recomendaria" há ${dias} dia(s). ` +
+      `O ideal é esperar ${minimo}. Considere avaliar outra etapa da jornada.`;
+    alerta.classList.remove('oculto');
+  }
 }
 
 function lerCampos(tipo) {
@@ -313,6 +354,7 @@ $('form-ficha').addEventListener('submit', async ev => {
     exp_etapa: ($('f-exp-etapa') || {}).value || null,
     exp_nota: notaExp === undefined ? null : Number(notaExp),
     exp_comentario: ($('f-exp-comentario') || {}).value || null,
+    exp_metrica: (CFG.metrica_por_etapa || {})[($('f-exp-etapa') || {}).value] || null,
     app_versao: VERSAO,
   };
 
@@ -454,6 +496,7 @@ $('f-cliente').addEventListener('input', ev => {
       // sugere quem cuida do cliente na carteira; o REP pode trocar digitando
       $('f-encaminhado').value = casa ? casa.value : c.vendedor.split(/\s+/)[0];
     }
+    if (typeof ajustarMetrica === 'function' && $('f-exp-etapa')) ajustarMetrica();
   } else {
     cartao.classList.add('oculto');
     $('dica-cliente').textContent = ev.target.value.trim()

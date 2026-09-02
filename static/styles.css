@@ -139,3 +139,7 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .nota:nth-child(n+10){border-color:#c9e3d6}
 .nota.escolhida{background:var(--verde);color:#fff;border-color:var(--verde);transform:scale(1.06)}
 @media (max-width:380px){ .notas{grid-template-columns:repeat(6,1fr)} }
+
+/* legenda da regua de 0 a 10 (o significado muda com a metrica) */
+.reguas{display:flex;justify-content:space-between;gap:10px;margin:2px 0 8px}
+.reguas span{font-size:.68rem;color:var(--cinza)}
