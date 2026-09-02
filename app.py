@@ -281,6 +281,32 @@ SCHEMA = {
             ativo INTEGER NOT NULL DEFAULT 1,
             atualizado_em TEXT
         )""",
+    "viagens": """
+        CREATE TABLE IF NOT EXISTS viagens (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT NOT NULL,
+            inicio TEXT,
+            fim TEXT,
+            rota TEXT,
+            observacao TEXT,
+            status TEXT NOT NULL DEFAULT 'planejada',
+            criada_por TEXT NOT NULL,
+            responsavel TEXT,
+            criada_em TEXT NOT NULL
+        )""",
+    "viagem_clientes": """
+        CREATE TABLE IF NOT EXISTS viagem_clientes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            viagem_id INTEGER NOT NULL,
+            cliente_codigo TEXT,
+            cliente_nome TEXT NOT NULL,
+            municipio TEXT,
+            motivo TEXT,
+            ordem INTEGER DEFAULT 0,
+            visitado INTEGER NOT NULL DEFAULT 0,
+            ficha_uuid TEXT,
+            visitado_em TEXT
+        )""",
     "experiencia": """
         CREATE TABLE IF NOT EXISTS experiencia (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -422,6 +448,8 @@ def init_db():
         if cur.rowcount:
             print("[db] %d resposta(s) de experiencia migrada(s)" % cur.rowcount)
 
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_vc_viagem ON viagem_clientes(viagem_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS ix_vc_cliente ON viagem_clientes(cliente_codigo)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_exp_ficha ON experiencia(ficha_uuid)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_exp_metrica ON experiencia(metrica)")
     cur.execute("CREATE INDEX IF NOT EXISTS ix_anexos_ficha ON anexos(ficha_uuid)")
@@ -819,6 +847,16 @@ def api_receber_fichas():
                  cliente_nome, et, METRICA_POR_ETAPA.get(et, "csat"), nt,
                  str(resp.get("comentario") or "")[:1200] or None, uni,
                  _agora(), session["login"]))
+
+        # se o cliente estava no roteiro de uma viagem aberta, marca visitado.
+        # E o que alimenta a aderencia ao roteiro sem digitacao extra.
+        cod = str(ficha.get("cliente_codigo") or "")[:40]
+        if cod:
+            db.execute("""
+                UPDATE viagem_clientes SET visitado = 1, ficha_uuid = ?, visitado_em = ?
+                 WHERE visitado = 0 AND cliente_codigo = ? AND viagem_id IN (
+                       SELECT id FROM viagens WHERE status IN ('planejada','em_andamento'))
+            """, (uuid_f, _agora(), cod))
 
         _salvar_anexos(uuid_f, ficha.get("anexos"), db)
         aceitas.append(uuid_f)
@@ -1261,6 +1299,211 @@ def api_alterar_usuario(uid):
                    (_hash(d["senha"]), uid))
     db.commit()
     return jsonify({"ok": True})
+
+
+# --------------------------------------------------------------------------
+# Planejamento de viagem e sugestao de visitas
+# --------------------------------------------------------------------------
+
+@app.route("/api/sugestao")
+@login_obrigatorio
+def api_sugestao():
+    """Quem visitar, e por que.
+
+    Cruza o que o sistema ja sabe: cobertura vencida, ocorrencia aberta,
+    nota baixa e volume. Cada cliente vem com o motivo em texto - sugestao
+    sem o porque nao ajuda ninguem a montar rota.
+    """
+    db = get_db()
+    municipio = (request.args.get("municipio") or "").strip()
+    rota = (request.args.get("rota") or "").strip()
+    limite = min(int(request.args.get("limite", 40)), 200)
+
+    filtros, args = ["c.ativo = 1"], []
+    if municipio:
+        filtros.append("c.cidade LIKE ?")
+        args.append("%%%s%%" % municipio)
+    if rota:
+        filtros.append("c.rota LIKE ?")
+        args.append("%%%s%%" % rota)
+
+    rows = db.execute("""
+        SELECT c.codigo, c.nome, c.cidade, c.rota, c.curva, c.vol_12m, c.vendedor,
+               MAX(f.recebido_em) AS ultima_visita,
+               (SELECT COUNT(*) FROM ocorrencias o
+                 WHERE o.cliente_codigo = c.codigo AND o.status <> 'resolvida') AS oc_abertas,
+               (SELECT MIN(e.nota) FROM experiencia e
+                 WHERE e.cliente_codigo = c.codigo) AS pior_nota
+          FROM clientes c
+          LEFT JOIN fichas f ON f.cliente_codigo = c.codigo
+         WHERE %s
+         GROUP BY c.codigo
+    """ % " AND ".join(filtros), args).fetchall()
+
+    hoje = datetime.now(timezone.utc)
+    saida = []
+    for r in rows:
+        ciclo = ciclo_do_municipio(r["cidade"])
+        dias = None
+        if r["ultima_visita"]:
+            try:
+                dias = (hoje - datetime.fromisoformat(r["ultima_visita"])).days
+            except ValueError:
+                dias = None
+
+        peso, motivos = 0, []
+        if r["oc_abertas"]:
+            peso += 100
+            motivos.append("%d ocorrência(s) em aberto" % r["oc_abertas"])
+        if r["pior_nota"] is not None and r["pior_nota"] <= NPS_DETRATOR:
+            peso += 60
+            motivos.append("deu nota %d numa pesquisa" % r["pior_nota"])
+        if dias is None:
+            peso += 50
+            motivos.append("nunca recebeu visita")
+        elif dias > ciclo:
+            peso += 40
+            motivos.append("sem visita há %d dias (ciclo %d)" % (dias, ciclo))
+        if r["curva"] == "A":
+            peso += 25
+            motivos.append("curva A")
+        elif r["curva"] == "B":
+            peso += 12
+        if r["vol_12m"]:
+            peso += min(r["vol_12m"] / 20000.0, 25)   # volume pesa, mas nao domina
+
+        if not motivos:
+            continue                                   # sem motivo, nao sugere
+        saida.append({
+            "codigo": r["codigo"], "nome": r["nome"], "cidade": r["cidade"],
+            "rota": r["rota"], "curva": r["curva"], "vol_12m": r["vol_12m"],
+            "vendedor": r["vendedor"], "dias": dias, "ciclo": ciclo,
+            "oc_abertas": r["oc_abertas"], "pior_nota": r["pior_nota"],
+            "peso": round(peso), "motivo": " · ".join(motivos),
+        })
+
+    saida.sort(key=lambda x: -x["peso"])
+    municipios = sorted({x["cidade"] for x in saida if x["cidade"]})
+    rotas = sorted({x["rota"] for x in saida if x["rota"]})
+    return jsonify({"clientes": saida[:limite], "total": len(saida),
+                    "municipios": municipios, "rotas": rotas})
+
+
+@app.route("/api/viagens", methods=["GET", "POST"])
+@login_obrigatorio
+def api_viagens():
+    db = get_db()
+    if request.method == "POST":
+        d = request.get_json(silent=True) or {}
+        nome = (d.get("nome") or "").strip()[:120]
+        if not nome:
+            return jsonify({"erro": "nome_obrigatorio"}), 400
+        cur = db.execute("""INSERT INTO viagens (nome, inicio, fim, rota,
+            observacao, status, criada_por, responsavel, criada_em)
+            VALUES (?,?,?,?,?,'planejada',?,?,?)""",
+            (nome, (d.get("inicio") or "")[:20] or None,
+             (d.get("fim") or "")[:20] or None, (d.get("rota") or "")[:80] or None,
+             (d.get("observacao") or "")[:500] or None, session["login"],
+             (d.get("responsavel") or session["login"])[:80], _agora()))
+        db.commit()
+        return jsonify({"ok": True, "id": cur.lastrowid})
+
+    onde = "" if session.get("papel") == "gestor" else \
+        "WHERE responsavel = '%s' OR criada_por = '%s'" % (session["login"], session["login"])
+    viagens = []
+    for v in db.execute("SELECT * FROM viagens %s ORDER BY COALESCE(inicio, criada_em) DESC LIMIT 60" % onde):
+        d = dict(v)
+        cont = db.execute("SELECT COUNT(*) t, SUM(visitado) v FROM viagem_clientes "
+                          "WHERE viagem_id = ?", (v["id"],)).fetchone()
+        d["planejados"] = cont["t"] or 0
+        d["visitados"] = cont["v"] or 0
+        d["aderencia"] = (round(100.0 * d["visitados"] / d["planejados"])
+                          if d["planejados"] else None)
+        viagens.append(d)
+    return jsonify({"viagens": viagens})
+
+
+@app.route("/api/viagens/<int:vid>", methods=["GET", "PATCH", "DELETE"])
+@login_obrigatorio
+def api_viagem(vid):
+    db = get_db()
+    v = db.execute("SELECT * FROM viagens WHERE id = ?", (vid,)).fetchone()
+    if not v:
+        return jsonify({"erro": "nao_encontrada"}), 404
+
+    if request.method == "DELETE":
+        if session.get("papel") != "gestor" and v["criada_por"] != session["login"]:
+            return jsonify({"erro": "sem_permissao"}), 403
+        db.execute("DELETE FROM viagem_clientes WHERE viagem_id = ?", (vid,))
+        db.execute("DELETE FROM viagens WHERE id = ?", (vid,))
+        db.commit()
+        return jsonify({"ok": True})
+
+    if request.method == "PATCH":
+        d = request.get_json(silent=True) or {}
+        if d.get("status") in ("planejada", "em_andamento", "concluida"):
+            db.execute("UPDATE viagens SET status = ? WHERE id = ?", (d["status"], vid))
+        for campo in ("nome", "inicio", "fim", "rota", "observacao", "responsavel"):
+            if campo in d:
+                db.execute("UPDATE viagens SET %s = ? WHERE id = ?" % campo,
+                           (str(d[campo] or "")[:500] or None, vid))
+        db.commit()
+        return jsonify({"ok": True})
+
+    clientes = [dict(r) for r in db.execute(
+        "SELECT * FROM viagem_clientes WHERE viagem_id = ? ORDER BY visitado, ordem, cliente_nome",
+        (vid,))]
+    d = dict(v)
+    d["clientes"] = clientes
+    d["planejados"] = len(clientes)
+    d["visitados"] = sum(1 for c in clientes if c["visitado"])
+    d["aderencia"] = round(100.0 * d["visitados"] / d["planejados"]) if clientes else None
+    return jsonify(d)
+
+
+@app.route("/api/viagens/<int:vid>/clientes", methods=["POST"])
+@login_obrigatorio
+def api_viagem_add(vid):
+    d = request.get_json(silent=True) or {}
+    lista = d.get("clientes")
+    if not isinstance(lista, list):
+        return jsonify({"erro": "lista_invalida"}), 400
+    db = get_db()
+    if not db.execute("SELECT 1 FROM viagens WHERE id = ?", (vid,)).fetchone():
+        return jsonify({"erro": "nao_encontrada"}), 404
+    ja = {r[0] for r in db.execute(
+        "SELECT cliente_codigo FROM viagem_clientes WHERE viagem_id = ?", (vid,))}
+    add = 0
+    for i, c in enumerate(lista[:200]):
+        cod = str(c.get("codigo") or "")[:40] or None
+        nome = str(c.get("nome") or "").strip()[:200]
+        if not nome or (cod and cod in ja):
+            continue
+        db.execute("""INSERT INTO viagem_clientes (viagem_id, cliente_codigo,
+            cliente_nome, municipio, motivo, ordem) VALUES (?,?,?,?,?,?)""",
+            (vid, cod, nome, str(c.get("cidade") or "")[:120] or None,
+             str(c.get("motivo") or "")[:300] or None, i))
+        if cod:
+            ja.add(cod)
+        add += 1
+    db.commit()
+    return jsonify({"ok": True, "adicionados": add})
+
+
+@app.route("/api/viagens/<int:vid>/clientes/<int:cid>", methods=["DELETE"])
+@login_obrigatorio
+def api_viagem_remove(vid, cid):
+    db = get_db()
+    db.execute("DELETE FROM viagem_clientes WHERE id = ? AND viagem_id = ?", (cid, vid))
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/viagens")
+@login_obrigatorio
+def viagens():
+    return render_template("viagens.html", nome=session.get("nome"),
+                           papel=session.get("papel"))
 
 
 @app.route("/foto/<nome>")

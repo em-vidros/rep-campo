@@ -144,3 +144,17 @@ tbody tr.nunca{background:#fdecea}
 .cartao-form .btn{margin-top:18px}
 .cartao-form .dupla{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:700px){ .cartao-form .dupla{grid-template-columns:1fr} }
+
+/* viagens e sugestao */
+.sugestao .motivo{margin-top:5px;font-size:.8rem;color:var(--aviso);font-weight:600}
+.sugestao.escolhido{border-color:var(--verde);border-left:4px solid var(--verde);background:#f4f9f6}
+.rodape-plano{position:sticky;bottom:0;background:#fff;border-top:2px solid var(--verde);
+  padding:12px 14px;display:flex;gap:14px;align-items:center;justify-content:space-between;
+  margin:0 -22px;box-shadow:0 -4px 14px rgba(0,0,0,.08);z-index:5}
+.rodape-plano .btn{width:auto;padding:12px 22px;margin:0}
+#conta-selecao{font-weight:700;color:var(--verde)}
+.item-roteiro{display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--borda)}
+.item-roteiro .marca-visita{font-size:1.1rem;color:var(--cinza);line-height:1.2}
+.item-roteiro.feito{opacity:.62}
+.item-roteiro.feito .marca-visita{color:var(--ok)}
+@media (max-width:700px){ .rodape-plano{flex-direction:column;margin:0 -12px} .rodape-plano .btn{width:100%} }

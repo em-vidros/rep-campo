@@ -31,6 +31,7 @@ a empresa passa a ter três verdades — e nenhuma confiável.
 | Definição de "ativo", churn 1 mês | `EMVIDROS_REGRAS_NEGOCIO.md` | todos |
 | Base de cada loja (recorte pós-Sti) | `EMVIDROS_COMERCIAL_ESTRUTURA.md` | todos |
 | Visitas, ocorrências, experiência | **REP Campo** | painéis, ARM |
+| Planejamento de viagem e roteiro | **REP Campo** | scorecard (aderência) |
 | NPS relacional amostral | Pesquisa CX formal | — |
 | CSAT/CES transacional contínuo | **REP Campo** | — |
 
@@ -90,6 +91,29 @@ usuários dos outros setores — que a gestão de usuários já cria.
 
 O item 5 é o que fecha o círculo da coerência: a ocorrência registrada pela
 recepção aparece para o representante antes da visita.
+
+---
+
+## Planejamento de viagem alimenta o indicador sozinho
+
+A aderência ao roteiro (indicador A1 da metodologia) não tem digitação própria:
+o representante monta o roteiro antes de viajar e, quando a ficha de visita
+chega, o cliente é marcado como visitado automaticamente pelo código do ERP.
+
+A sugestão de quem visitar cruza o que o sistema já sabe, nesta ordem de peso:
+
+| Sinal | Peso | De onde vem |
+|---|---|---|
+| Ocorrência em aberto | 100 | tabela `ocorrencias` |
+| Nota ≤ 6 em pesquisa | 60 | tabela `experiencia` |
+| Nunca recebeu visita | 50 | fichas × carteira |
+| Ciclo vencido | 40 | ciclo da praça (§6 da metodologia) |
+| Curva A / B | 25 / 12 | carteira |
+| Volume 12m | até 25 | carteira |
+
+**Cada sugestão vem com o motivo escrito.** Lista sem o porquê não ajuda
+ninguém a montar rota — e é o motivo que faz o representante concordar ou
+discordar da sugestão.
 
 ---
 

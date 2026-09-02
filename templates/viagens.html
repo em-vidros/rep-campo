@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REP Campo - Viagens e rotas</title>
+<meta name="theme-color" content="#0f3d2e">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/painel.css">
+</head>
+<body class="painel">
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca">REP <span>Campo</span> <em>viagens</em></div>
+    <div class="topo-acoes">
+      <a class="sair" href="/">app do rep</a>
+      {% if papel == 'gestor' %}<a class="sair" href="/painel">painel</a>{% endif %}
+      <a class="sair" href="/conta">conta</a>
+      <a class="sair" href="/logout">sair</a>
+    </div>
+  </div>
+</header>
+
+<nav class="abas">
+  <button class="aba ativa" data-tela="lista">Minhas viagens</button>
+  <button class="aba" data-tela="planejar">Planejar nova</button>
+</nav>
+
+<main class="conteudo">
+  <div id="msg"></div>
+
+  <!-- ============ LISTA ============ -->
+  <section id="tela-lista" class="tela ativa">
+    <div id="lista-viagens" class="lista-gestor"></div>
+  </section>
+
+  <!-- ============ PLANEJAR ============ -->
+  <section id="tela-planejar" class="tela">
+    <form id="form-viagem" class="cartao-form">
+      <h3 style="margin-top:0">1. Dados da viagem</h3>
+      <div class="dupla">
+        <label>Nome<input id="v-nome" required placeholder="ex: Rota Pindaré — setembro"></label>
+        <label>Rota ou região<input id="v-rota" placeholder="ex: eixo Pindaré"></label>
+      </div>
+      <div class="dupla">
+        <label>Saída<input id="v-inicio" type="date"></label>
+        <label>Retorno<input id="v-fim" type="date"></label>
+      </div>
+      <label>Observação<input id="v-obs" placeholder="opcional"></label>
+    </form>
+
+    <h3 style="margin-top:24px">2. Quem visitar</h3>
+    <div class="barra-filtros">
+      <label>Município<input id="s-municipio" placeholder="filtrar" list="s-lista-mun">
+        <datalist id="s-lista-mun"></datalist></label>
+      <label>Rota<input id="s-rota" placeholder="filtrar" list="s-lista-rota">
+        <datalist id="s-lista-rota"></datalist></label>
+      <button id="s-buscar" class="btn-sec" type="button">Buscar sugestões</button>
+    </div>
+    <p class="explica">Ordenado por prioridade: <b>ocorrência em aberto</b> pesa mais,
+      depois <b>nota baixa em pesquisa</b>, <b>nunca visitado</b>, <b>ciclo vencido</b>,
+      curva e volume. Marque quem entra no roteiro.</p>
+
+    <div id="lista-sugestao" class="lista-gestor"></div>
+
+    <div id="rodape-plano" class="rodape-plano oculto">
+      <span id="conta-selecao">0 selecionados</span>
+      <button id="btn-criar" class="btn primario" type="button">Criar viagem com os selecionados</button>
+    </div>
+  </section>
+</main>
+<script src="/static/viagens.js"></script>
+</body>
+</html>
