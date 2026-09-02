@@ -1,80 +1,315 @@
 # -*- coding: utf-8 -*-
-"""Mapeamento oficial cidade -> rota da base Imperatriz.
+"""Cidade -> rota e tabela de preco. GERADO AUTOMATICAMENTE, nao editar na mao.
 
-Fonte: "CIDADES, ROTAS E TABELAS 30.04.2026.xlsx", validado pelo Ricardo.
-O campo `rota` que vem da carteira esta incompleto - Araguaina/TO, por
-exemplo, chega como "Sem Rota" quando na verdade e uma das cidades mais
-importantes da rota Balsas. Este mapa corrige isso na sincronizacao.
+Fonte: CIDADES, ROTAS E TABELAS 28.08.2026.xlsx
+Gerado em: 02/09/2026 por gerar_rotas_oficiais.py
 
-So base Itz. Rotas de outra base sao tratadas em ROTAS_FORA_DA_BASE (app.py).
+A rota vazia significa "Sem Rota" na planilha: a cidade e atendida, mas nao
+entra em roteiro regular. E diferente de cidade ausente da planilha, que nao
+tem atendimento definido.
 """
 
-ROTAS_ITZ = {
-    "Imperatriz": ["Davinopolis", "Imperatriz", "Joao Lisboa", "Senador La Roque"],
+# cidade normalizada -> (rota, tabela de preco)
+CIDADES_ITZ = {
+    "abaetetuba":                              ("Barcarena",   "BEL"),
+    "abel figueiredo":                         ("",            "PARAG"),
+    "acara":                                   ("Barcarena",   "BEL"),
+    "alto alegre do pindare":                  ("",            "IMP II"),
+    "amarante":                                ("Pres. Dutra", "IMP"),
+    "anajas":                                  ("Belém",       "BEL"),
+    "ananindeua":                              ("Belém",       "BEL"),
+    "araguatins":                              ("Araguatins",  "PARAU"),
+    "araguaina":                               ("Balsas",      "VIP BALSAS"),
+    "augustinopolis":                          ("Araguatins",  "PARAU"),
+    "aurora do para":                          ("Belém",       "BEL"),
+    "axixa do tocantins":                      ("Araguatins",  "PARAU"),
+    "acailandia":                              ("Buriticupu",  "IMP"),
+    "balsas":                                  ("Balsas",      "VIP BALSAS"),
+    "barcarena":                               ("Barcarena",   "BEL"),
+    "barra do corda":                          ("Pres. Dutra", "DUTRA"),
+    "barao de grajau":                         ("",            "DUTRA"),
+    "belem":                                   ("Belém",       "BEL"),
+    "benevides":                               ("Belém",       "BEL"),
+    "bom jardim":                              ("Buriticupu",  "DUTRA"),
+    "bom jesus das selvas":                    ("Buriticupu",  "IMP II"),
+    "bom jesus do tocantins":                  ("",            "PARAG"),
+    "bonito":                                  ("",            "BEL"),
+    "braganca":                                ("",            "BEL"),
+    "brejo grande do araguaia":                ("",            "PARAU"),
+    "breves":                                  ("Belém",       "BEL"),
+    "buriticupu":                              ("Buriticupu",  "IMP II"),
+    "buritirana":                              ("Pres. Dutra", "IMP II"),
+    "cachoeira do piria":                      ("",            "BEL"),
+    "campestre do maranhao":                   ("Balsas",      "IMP II"),
+    "canaa dos carajas":                       ("",            "PARAU"),
+    "capanema":                                ("",            "BEL"),
+    "capitao poco":                            ("",            "BEL"),
+    "carolina":                                ("Balsas",      "VIP BALSAS"),
+    "castanhal":                               ("Belém",       "BEL"),
+    "cidelandia":                              ("Paragominas", "IMP"),
+    "colares":                                 ("",            "BEL"),
+    "colinas do tocantins":                    ("Araguatins",  "PARAU"),
+    "colinas":                                 ("Pres. Dutra", "DUTRA"),
+    "conceicao do araguaia":                   ("",            "PARAU"),
+    "concordia do para":                       ("Barcarena",   "BEL"),
+    "curionopolis":                            ("",            "PARAU"),
+    "curralinho":                              ("Belém",       "BEL"),
+    "curuca":                                  ("",            "BEL"),
+    "davinopolis":                             ("Imperatriz",  "IMP II"),
+    "dom eliseu":                              ("Paragominas", "PARAG"),
+    "dom pedro":                               ("Pres. Dutra", "DUTRA"),
+    "eldorado dos carajas":                    ("",            "PARAU"),
+    "estreito":                                ("Balsas",      "VIP BALSAS"),
+    "floriano":                                ("",            "DUTRA"),
+    "formosa da serra negra":                  ("Balsas",      "VIP BALSAS"),
+    "fortaleza dos nogueiras":                 ("Balsas",      "VIP BALSAS"),
+    "fronteiras":                              ("",            "THE"),
+    "governador edison lobao":                 ("Balsas",      "IMP II"),
+    "governador newton bello":                 ("Buriticupu",  "DUTRA"),
+    "grajau":                                  ("Pres. Dutra", "IMP"),
+    "igarape do meio":                         ("Buriticupu",  "DUTRA"),
+    "igarape acu":                             ("",            "BEL"),
+    "igarape miri":                            ("Barcarena",   "BEL"),
+    "imperatriz":                              ("Imperatriz",  "IMP II"),
+    "ipixuna do para":                         ("Belém",       "BEL"),
+    "itinga do maranhao":                      ("Paragominas", "PARAG"),
+    "joao lisboa":                             ("Imperatriz",  "IMP II"),
+    "magalhaes barata":                        ("",            "BEL"),
+    "maraba":                                  ("",            "IMP"),
+    "marapanim":                               ("",            "BEL"),
+    "marituba":                                ("Belém",       "BEL"),
+    "moju":                                    ("Barcarena",   "BEL"),
+    "montes altos":                            ("",            "IMP"),
+    "moncao":                                  ("Buriticupu",  "DUTRA"),
+    "muana":                                   ("Belém",       "BEL"),
+    "mae do rio":                              ("Belém",       "BEL"),
+    "nova timboteua":                          ("",            "BEL"),
+    "ourilandia do norte":                     ("",            "PARAU"),
+    "ourem":                                   ("",            "BEL"),
+    "paragominas":                             ("Paragominas", "PARAG"),
+    "paraibano":                               ("",            "DUTRA"),
+    "parauapebas":                             ("",            "PARAU"),
+    "pau d arco":                              ("",            "PARAU"),
+    "pindare mirim":                           ("Buriticupu",  "DUTRA"),
+    "pio xii":                                 ("Buriticupu",  "DUTRA"),
+    "ponta de pedras":                         ("Belém",       "BEL"),
+    "porto franco":                            ("Balsas",      "DUTRA"),
+    "presidente dutra":                        ("Pres. Dutra", "DUTRA"),
+    "redencao":                                ("",            "PARAU"),
+    "riachao":                                 ("Balsas",      "VIP BALSAS"),
+    "ribamar fiquene":                         ("Balsas",      "IMP"),
+    "rio maria":                               ("",            "PARAU"),
+    "rondon do para":                          ("Paragominas", "PARAG"),
+    "salinopolis":                             ("",            "BEL"),
+    "santa barbara do para":                   ("Belém",       "BEL"),
+    "santa ines":                              ("Buriticupu",  "DUTRA"),
+    "santa izabel do para":                    ("Belém",       "BEL"),
+    "santa luzia do para":                     ("",            "BEL"),
+    "santa luzia do para":                     ("Belém",       "BEL"),
+    "santa luzia":                             ("Buriticupu",  "IMP II"),
+    "santa maria do para":                     ("Belém",       "BEL"),
+    "sapucaia":                                ("",            "PARAU"),
+    "senador la roque":                        ("Pres. Dutra", "IMP II"),
+    "sao bento do tocantins":                  ("",            "PARAU"),
+    "sao caetano das odivelas":                ("Belém",       "BEL"),
+    "sao domingos do araguaia":                ("",            "PARAU"),
+    "sao domingos do azeitao":                 ("",            "DUTRA"),
+    "sao domingos do maranhao":                ("Pres. Dutra", "DUTRA"),
+    "sao felix do xingu":                      ("Belém",       "PARAU"),
+    "sao francisco do brejao":                 ("Buriticupu",  "IMP"),
+    "sao francisco do para":                   ("Belém",       "BEL"),
+    "sao joao da ponta":                       ("",            "BEL"),
+    "sao joao de pirabas":                     ("",            "BEL"),
+    "sao joao do paraiso":                     ("Balsas",      "DUTRA"),
+    "sao joao dos patos":                      ("",            "DUTRA"),
+    "sao miguel do guama":                     ("Belém",       "BEL"),
+    "sao miguel do tocantins":                 ("Araguatins",  "IMP"),
+    "sao pedro da agua branca":                ("Paragominas", "IMP"),
+    "sao sebastiao da boa vista":              ("Belém",       "BEL"),
+    "sao sebastiao do tocantins":              ("Araguatins",  "IMP"),
+    "sitio novo do tocantins":                 ("Araguatins",  "IMP"),
+    "sitio novo":                              ("Pres. Dutra", "IMP"),
+    "tracuateua":                              ("",            "BEL"),
+    "tracuateua":                              ("",            "BEL"),
+    "tucuma":                                  ("",            "PARAU"),
+    "tuntum":                                  ("Pres. Dutra", "DUTRA"),
+    "ulianopolis":                             ("Paragominas", "PARAG"),
+    "urucui":                                  ("",            "THE"),
+    "vigia":                                   ("",            "BEL"),
+    "vila nova dos martirios":                 ("",            "IMP"),
+    "xinguara":                                ("",            "PARAU"),
+    "ze doca":                                 ("Buriticupu",  "DUTRA"),
+    "agua branca":                             ("",            "THE"),
+    "agua azul do norte":                      ("",            "PARAU"),
+}
 
-    "Buriticupu": ["Acailandia", "Bom Jesus das Selvas", "Buriticupu",
-                   "Santa Luzia", "Sao Francisco do Brejao"],
-
-    "Pres. Dutra": ["Amarante", "Barra do Corda", "Buritirana", "Colinas",
-                    "Dom Pedro", "Grajau", "Presidente Dutra",
-                    "Sao Domingos do Maranhao", "Sitio Novo", "Tuntum"],
-
-    "Balsas": ["Araguaina", "Balsas", "Campestre do Maranhao", "Carolina",
-               "Estreito", "Formosa da Serra Negra", "Fortaleza dos Nogueiras",
-               "Governador Edison Lobao", "Porto Franco", "Riachao",
-               "Ribamar Fiquene", "Sao Joao do Paraiso"],
-
-    "Paragominas": ["Cidelandia", "Dom Eliseu", "Itinga do Maranhao",
-                    "Paragominas", "Rondon do Para", "Sao Pedro da Agua Branca",
-                    "Ulianopolis"],
-
-    "Ananindeua": ["Ananindeua", "Aurora do Para", "Castanhal", "Ipixuna do Para",
-                   "Mae do Rio", "Santa Maria do Para", "Sao Miguel do Guama"],
-
-    "Belém": ["Anajas", "Belem", "Benevides", "Breves", "Curralinho", "Marituba",
-              "Muana", "Ponta de Pedras", "Santa Barbara do Para",
-              "Santa Izabel do Para", "Sao Caetano de Odivelas",
-              "Sao Francisco do Para", "Sao Felix do Xingu",
-              "Sao Sebastiao da Boa Vista"],
-
-    "Barcarena": ["Abaetetuba", "Acara", "Barcarena", "Concordia do Para",
-                  "Igarape-Miri", "Moju"],
-
-    "Salinópolis": ["Braganca", "Capanema", "Capitao Poco", "Nova Timboteua",
-                    "Salinopolis", "Santa Luzia do Para", "Tracuateua"],
-
-    "Araguatins": ["Araguatins", "Augustinopolis", "Axixa do Tocantins",
-                   "Colinas do Tocantins", "Sao Miguel do Tocantins",
-                   "Sao Sebastiao do Tocantins", "Sitio Novo do Tocantins"],
-
-    # Migrou da base Raposa em 01/09/2026, por decisao do Ricardo. Na carteira
-    # esses clientes chegam sem rota; aqui ganham a rota que sempre foi deles.
-    "Santa Inês": ["Alto Alegre do Pindare", "Bom Jardim", "Governador Newton Belo",
-                   "Igarape do Meio", "Moncao", "Pindare-Mirim", "Pio XII",
-                   "Santa Ines", "Sao Mateus do Maranhao", "Ze Doca"],
+CIDADES_RAPOSA = {
+    "alcantara":                               ("",            "SLZ"),
+    "alto alegre do maranhao":                 ("Caxias",      "VIP"),
+    "alto longa":                              ("",            "THE"),
+    "altos":                                   ("Parnaíba",    "THE"),
+    "amarante":                                ("",            "THE"),
+    "anajatuba":                               ("Bacabal",     "SLZ"),
+    "araguana":                                ("",            "SLZ"),
+    "arari":                                   ("Pinheiro",    "SLZ"),
+    "arraial":                                 ("",            "THE"),
+    "axixa":                                   ("Parnaíba",    "SLZ"),
+    "bacabal":                                 ("Bacabal",     "VIP"),
+    "bacabeira":                               ("Parnaíba",    "SLZ"),
+    "bacuri":                                  ("",            "SLZ"),
+    "baixa grande do ribeiro":                 ("",            "THE"),
+    "barras":                                  ("",            "THE"),
+    "barreirinhas":                            ("Parnaíba",    "SLZ"),
+    "barro duro":                              ("",            "THE"),
+    "batalha":                                 ("",            "THE"),
+    "bela vista do maranhao":                  ("",            "VIP"),
+    "bequimao":                                ("Pinheiro",    "SLZ"),
+    "boa vista do gurupi":                     ("",            "SLZ"),
+    "bom jesus":                               ("",            "THE"),
+    "bom lugar":                               ("",            "VIP"),
+    "brasileira":                              ("",            "THE"),
+    "brejo":                                   ("São Bernardo", "SLZ"),
+    "buriti":                                  ("",            "SLZ"),
+    "cajari":                                  ("",            "SLZ"),
+    "campo maior":                             ("Parnaíba",    "THE"),
+    "cantanhede":                              ("",            "SLZ"),
+    "capinzal do norte":                       ("",            "THE"),
+    "carutapera":                              ("",            "SLZ"),
+    "castelo do piaui":                        ("",            "THE"),
+    "caxias":                                  ("Caxias",      "THE"),
+    "central do maranhao":                     ("",            "SLZ"),
+    "centro novo do maranhao":                 ("",            "SLZ"),
+    "chapadinha":                              ("Itapecuru",   "SLZ"),
+    "cocal":                                   ("",            "THE"),
+    "codo":                                    ("Caxias",      "THE"),
+    "coroata":                                 ("Caxias",      "THE"),
+    "corrente":                                ("",            "THE"),
+    "cururupu":                                ("",            "SLZ"),
+    "demerval lobao":                          ("",            "THE"),
+    "duque bacelar":                           ("",            "THE"),
+    "esperantinopolis":                        ("",            "VIP"),
+    "godofredo viana":                         ("",            "SLZ"),
+    "governador nunes freire":                 ("",            "SLZ"),
+    "guadalupe":                               ("",            "THE"),
+    "humberto de campos":                      ("",            "SLZ"),
+    "icatu":                                   ("Parnaíba",    "SLZ"),
+    "igarape grande":                          ("",            "VIP"),
+    "itapecuru mirim":                         ("Itapecuru",   "SLZ"),
+    "jose de freitas":                         ("",            "THE"),
+    "junco do maranhao":                       ("",            "SLZ"),
+    "lago da pedra":                           ("",            "VIP"),
+    "lima campos":                             ("Caxias",      "THE"),
+    "luzilandia":                              ("",            "THE"),
+    "luzinopolis":                             ("",            "IMP"),
+    "luis correia":                            ("Parnaíba",    "THE"),
+    "luis domingues":                          ("",            "SLZ"),
+    "magalhaes de almeida":                    ("",            "SLZ"),
+    "maracacume":                              ("",            "SLZ"),
+    "maranhaozinho":                           ("",            "SLZ"),
+    "matinha":                                 ("Pinheiro",    "SLZ"),
+    "matoes do norte":                         ("Bacabal",     "SLZ"),
+    "miranda do norte":                        ("Bacabal",     "SLZ"),
+    "mirinzal":                                ("",            "SLZ"),
+    "morros":                                  ("Parnaíba",    "SLZ"),
+    "nazare do piaui":                         ("",            "THE"),
+    "oeiras":                                  ("",            "THE"),
+    "olho d'agua das cunhas":                  ("",            "VIP"),
+    "olinda nova do maranhao":                 ("Pinheiro",    "SLZ"),
+    "palmeirandia":                            ("Pinheiro",    "SLZ"),
+    "parnarama":                               ("",            "THE"),
+    "parnaiba":                                ("Parnaíba",    "THE"),
+    "paulino neves":                           ("Parnaíba",    "SLZ"),
+    "paulo ramos":                             ("",            "VIP"),
+    "paco do lumiar":                          ("São Luis",    "SLZ"),
+    "pedreiras":                               ("Caxias",      "THE"),
+    "pedro ii":                                ("",            "THE"),
+    "penalva":                                 ("Pinheiro",    "SLZ"),
+    "peritoro":                                ("Caxias",      "THE"),
+    "pinheiro":                                ("Pinheiro",    "SLZ"),
+    "piracuruca":                              ("Parnaíba",    "THE"),
+    "piripiri":                                ("Parnaíba",    "THE"),
+    "pocao de pedras":                         ("",            "VIP"),
+    "presidente juscelino":                    ("",            "SLZ"),
+    "presidente sarney":                       ("",            "SLZ"),
+    "primeira cruz":                           ("",            "SLZ"),
+    "raposa":                                  ("São Luis",    "SLZ"),
+    "rosario":                                 ("Parnaíba",    "SLZ"),
+    "santa helena":                            ("Pinheiro",    "SLZ"),
+    "santa luzia do parua":                    ("",            "DUTRA"),
+    "santa quiteria do maranhao":              ("São Bernardo", "SLZ"),
+    "santa rita":                              ("Bacabal",     "SLZ"),
+    "santo antonio dos lopes":                 ("",            "THE"),
+    "sao benedito do rio preto":               ("Urbano Santos", "SLZ"),
+    "sao bento":                               ("Pinheiro",    "SLZ"),
+    "sao bernardo":                            ("São Bernardo", "SLZ"),
+    "sao jose de ribamar":                     ("São Luis",    "SLZ"),
+    "sao joao do piaui":                       ("",            "THE"),
+    "sao joao do soter":                       ("",            "THE"),
+    "sao luis":                                ("São Luis",    "SLZ"),
+    "sao mateus do maranhao":                  ("Bacabal",     "VIP"),
+    "sao pedro do piaui":                      ("",            "THE"),
+    "sao raimundo nonato":                     ("",            "THE"),
+    "sao vicente ferrer":                      ("Pinheiro",    "SLZ"),
+    "tanque do piaui":                         ("",            "THE"),
+    "teresina":                                ("Teresina",    "THE"),
+    "timbiras":                                ("Caxias",      "THE"),
+    "timon":                                   ("Caxias",      "THE"),
+    "trizidela do vale":                       ("Caxias",      "THE"),
+    "turiacu":                                 ("",            "SLZ"),
+    "turilandia":                              ("Pinheiro",    "SLZ"),
+    "tutoia":                                  ("Parnaíba",    "SLZ"),
+    "uniao":                                   ("",            "THE"),
+    "urbano santos":                           ("Urbano Santos", "SLZ"),
+    "valenca do piaui":                        ("",            "DUTRA"),
+    "vargem grande":                           ("Itapecuru",   "SLZ"),
+    "viana":                                   ("Pinheiro",    "SLZ"),
+    "vitorino freire":                         ("",            "VIP"),
+    "vitoria do mearim":                       ("Pinheiro",    "SLZ"),
 }
 
 
+EXPANSOES = [
+    (r"\bdo ma\b", "do maranhao"), (r"\bdo to\b", "do tocantins"),
+    (r"\bdo pa\b", "do para"), (r"\bdo pi\b", "do piaui"),
+    (r"\bgov\.?\b", "governador"), (r"\bpres\.?\b", "presidente"),
+    (r"\bsto\.?\b", "santo"), (r"\bsta\.?\b", "santa"),
+]
+CORRECOES = {"araguaiina": "araguaina"}
+
+
 def _chave(cidade):
-    """Normaliza para comparar: sem acento, sem UF, minusculo."""
     import re
     import unicodedata
     t = unicodedata.normalize("NFKD", str(cidade or "")).encode("ascii", "ignore").decode()
-    t = t.split("/")[0]                       # "Balsas/MA" -> "Balsas"
-    t = re.sub(r"[-_]+", " ", t).lower()
-    return re.sub(r"\s+", " ", t).strip()
-
-
-# cidade normalizada -> rota oficial
-CIDADE_ROTA = {}
-for _rota, _cidades in ROTAS_ITZ.items():
-    for _c in _cidades:
-        CIDADE_ROTA[_chave(_c)] = _rota
+    t = t.split("/")[0]
+    t = re.sub(r"[-_.]+", " ", t).lower()
+    t = re.sub(r"\s+", " ", t).strip()
+    for padrao, troca in EXPANSOES:
+        t = re.sub(padrao, troca, t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return CORRECOES.get(t, t)
 
 
 def rota_da_cidade(cidade):
-    """Rota oficial da cidade, ou None se ela nao estiver no mapa."""
-    return CIDADE_ROTA.get(_chave(cidade))
+    """Rota oficial da cidade na base Itz. None se nao estiver na planilha."""
+    achado = CIDADES_ITZ.get(_chave(cidade))
+    return achado[0] if achado else None
 
 
-TOTAL_CIDADES = len(CIDADE_ROTA)
+def tabela_da_cidade(cidade):
+    achado = CIDADES_ITZ.get(_chave(cidade))
+    return achado[1] if achado else None
+
+
+def e_da_base_itz(cidade):
+    """True se a planilha diz que a cidade e atendida pela base Imperatriz."""
+    return _chave(cidade) in CIDADES_ITZ
+
+
+def e_da_raposa(cidade):
+    return _chave(cidade) in CIDADES_RAPOSA
+
+
+ROTAS = sorted({r for r, _ in CIDADES_ITZ.values() if r})
+TOTAL_ITZ = len(CIDADES_ITZ)
+TOTAL_RAPOSA = len(CIDADES_RAPOSA)

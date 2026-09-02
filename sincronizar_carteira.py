@@ -160,34 +160,45 @@ def sincronizar(args):
         print("[--] a fonte devolveu ZERO cliente. Abortando para nao inativar a base.")
         sys.exit(1)
 
-    # a rota que vem da carteira esta incompleta; o mapa oficial corrige
-    corrigidas, sem_mapa = {}, set()
+    # A planilha oficial manda na rota. O campo que vem da carteira esta
+    # incompleto e as vezes divergente - Araguaina chegava sem rota, e clientes
+    # de Ananindeua vinham como Belem.
+    corrigidas, sem_mapa, da_raposa = {}, set(), set()
     for c in clientes:
-        # a carteira traz "Sem Rota" e "sem Rota"; normaliza antes de comparar
+        cidade = c.get("cidade")
         if rotas_oficiais._chave(c.get("rota")) in ("sem rota", ""):
             c["rota"] = ""
-        oficial = rotas_oficiais.rota_da_cidade(c.get("cidade"))
-        if not oficial:
-            if c.get("cidade"):
-                sem_mapa.add(c["cidade"])
+        if not rotas_oficiais.e_da_base_itz(cidade):
+            if cidade:
+                (da_raposa if rotas_oficiais.e_da_raposa(cidade) else sem_mapa).add(cidade)
             continue
+        oficial = rotas_oficiais.rota_da_cidade(cidade) or ""
         atual = (c.get("rota") or "").strip()
         if rotas_oficiais._chave(atual) != rotas_oficiais._chave(oficial):
-            corrigidas.setdefault((atual or "(vazia)", oficial), 0)
-            corrigidas[(atual or "(vazia)", oficial)] += 1
+            de = atual or "(sem rota)"
+            para = oficial or "(sem rota)"
+            corrigidas[(de, para)] = corrigidas.get((de, para), 0) + 1
             c["rota"] = oficial
+        c["tabela"] = rotas_oficiais.tabela_da_cidade(cidade) or c.get("tabela")
 
     clientes = base.curva_abc(clientes)
     print("[fonte] %s" % fonte)
     print("[fonte] %d cliente(s)" % len(clientes))
     if corrigidas:
         print()
-        print("[rota] corrigidas pelo mapa oficial de 30/04/2026:")
+        print("[rota] corrigidas pela planilha oficial de 28/08/2026:")
         for (de, para), n in sorted(corrigidas.items(), key=lambda x: -x[1]):
             print("   %4d cliente(s)  %-18s -> %s" % (n, de[:18], para))
+    if da_raposa:
+        print()
+        print("[rota] %d cidade(s) que a planilha atribui a base RAPOSA:" % len(da_raposa))
+        for c in sorted(da_raposa)[:8]:
+            print("   %s" % c)
+        if len(da_raposa) > 8:
+            print("   ... e mais %d" % (len(da_raposa) - 8))
     if sem_mapa:
         print()
-        print("[rota] %d cidade(s) fora do mapa oficial (rota da carteira mantida):"
+        print("[rota] %d cidade(s) que nao estao na planilha (rota da carteira mantida):"
               % len(sem_mapa))
         for c in sorted(sem_mapa)[:12]:
             print("   %s" % c)
