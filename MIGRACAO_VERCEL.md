@@ -1,7 +1,7 @@
 # Migração do REP Campo para Vercel e Neon
 
 Escrito pela TI em 02/09/2026, a pedido do Henrique, contra o commit `7f3dc5c`,
-com o `app.py` em 1.570 linhas. Os 123 números de linha citados aqui foram
+com o `app.py` em 1.570 linhas. Os 169 números de linha citados aqui foram
 conferidos por script contra o arquivo. Depois de cada push seu eles saem do
 lugar, e o `verificar_citacoes.py`, na raiz do repositório, reencontra o código
 citado e reescreve os números. Rode ele antes de confiar em qualquer linha daqui.
@@ -36,6 +36,37 @@ O commit `d86b0f9` definiu os dois, com `SENHA_MIN = 8` e o `_hash` chamando
 `generate_password_hash` com `pbkdf2:sha256`, o mesmo método do
 `criar_usuario.py`. Fica registrado porque o teste de aceite lá embaixo cobre as
 três telas, e porque a escolha do pbkdf2 tem que ser mantida no port.
+
+### O login do usuário entra dentro do texto do SQL
+
+A linha 1450 monta o filtro da lista de viagens assim:
+
+```python
+onde = "" if session.get("papel") == "gestor" else \
+    "WHERE responsavel = '%s' OR criada_por = '%s'" % (session["login"], session["login"])
+```
+
+O login entra entre aspas, sem passar por parâmetro. Um login com apóstrofo já
+derruba a tela "Minhas viagens" com 500. Um login escolhido de propósito lê ou
+apaga o que quiser no banco. Quem cria login é o gestor, na tela de usuários, o
+que reduz o alcance mas não fecha o buraco.
+
+Escreva `WHERE responsavel = ? OR criada_por = ?` e passe o login duas vezes na
+lista de parâmetros. Depois da conversão viram dois `%s`.
+
+### Qualquer representante mexe na viagem de qualquer outro
+
+A rota `/api/viagens/<int:vid>` só confere dono no DELETE, na linha 1474. O GET,
+o PATCH, o `POST /clientes` da linha 1503 e o `DELETE /clientes/<cid>` da linha
+1532 exigem só estar logado. Trocando o número na URL, um representante lê o
+roteiro do outro, renomeia a viagem, troca o responsável, marca como concluída e
+apaga clientes do roteiro. O `api_viagem_remove` nem confere se a viagem existe.
+
+O filtro por `responsavel` da linha 1450 dá a impressão de que há isolamento por
+usuário. Não há. Ele só esconde a viagem alheia da lista.
+
+Escreva uma função que carrega a viagem e exige `papel == 'gestor'`, ou
+`criada_por == login`, ou `responsavel == login`. Chame nas quatro rotas.
 
 ### O app engole todo erro de sincronização
 
@@ -90,7 +121,7 @@ dessas derruba a partida da instância, e aí toda requisição dela devolve 500
 
 ## Os silêncios da migração
 
-Esta é a parte que importa. Seis coisas continuam parecendo certas no código
+Esta é a parte que importa. Sete coisas continuam parecendo certas no código
 depois da migração e param de funcionar sem erro.
 
 ### 1. Um erro no meio do lote apaga o lote inteiro
@@ -107,9 +138,20 @@ Trate ficha a ficha. Use um savepoint por ficha, ou capture a exceção dentro d
 laço e faça `rollback` só daquela, empurrando o `uuid` para a lista de
 rejeitadas. Assim uma ficha ruim é recusada com motivo e as outras nove entram.
 
+O laço cresceu com os commits de 02/09. Além dos dois `INSERT` de antes, cada
+ficha agora grava até 12 linhas em `experiencia`, a partir da linha 842, um
+`UPDATE` em `viagem_clientes` na linha 856 e até 8 linhas em `anexos` na linha
+861. São até 21 instruções por ficha, todas dentro da mesma transação. Uma nota
+fora de faixa numa delas apaga o lote de dez.
+
 O mesmo vale para `api_atualizar_ocorrencia`, linhas 1109 a 1131, que faz até
 quatro `UPDATE` antes do `commit`. Se o primeiro falhar, os outros levantam
 `InFailedSqlTransaction` e a rota devolve 500 escondendo o erro real.
+
+E vale para `api_viagem_add`, linha 1503, que faz até 200 `INSERT` antes do
+`commit` da linha 1526. Um erro no meio derruba os seguintes, a rota devolve 500,
+e o usuário fica com uma viagem criada e vazia, porque o POST de criação já
+tinha commitado na linha 1447.
 
 ### 2. O número da ocorrência passa a colidir
 
@@ -160,7 +202,24 @@ passam as duas pela verificação e a segunda bate em violação de chave. Use
 `INSERT ... ON CONFLICT (uuid) DO NOTHING` e trate a ficha como aceita de
 qualquer jeito.
 
-### 3. O freio de força bruta para de bloquear
+### 3. O roteiro da viagem duplica cliente
+
+A `api_viagem_add`, linha 1503, lê os clientes que já estão no roteiro na linha
+1513 e insere os que faltam logo abaixo. Não há trava entre a leitura e a
+escrita, e a tabela `viagem_clientes` não tem índice único em
+`(viagem_id, cliente_codigo)`.
+
+O `viagens.js` dispara esse POST logo depois do POST que cria a viagem. Um toque
+duplo no botão já manda duas requisições. No servidor de hoje elas se enfileiram
+no mesmo processo. Na Vercel caem em processos diferentes, as duas leem o roteiro
+vazio e as duas inserem tudo. O roteiro aparece com cada cliente duas vezes, e a
+aderência sai dividida pelo denominador errado.
+
+Crie o índice único e escreva `INSERT ... ON CONFLICT DO NOTHING`. Aí a leitura
+da linha 1513 deixa de ser necessária, e some junto o `r[0]` que quebra com
+`dict_row`.
+
+### 4. O freio de força bruta para de bloquear
 
 O `TENTATIVAS = {}` da linha 497 é um dicionário na memória do processo. O
 comentário das linhas 495 e 496 é honesto sobre isso: "em memoria: o app tem 2-3
@@ -187,7 +246,7 @@ mesmo tempo. Leia o primeiro endereço de `X-Forwarded-For`, com `remote_addr`
 como reserva. Se um dia alguma rota precisar do esquema ou da URL externa
 corretos, aí instale o `ProxyFix` do Werkzeug. Nenhuma rota de hoje precisa.
 
-### 4. `REAL` no Postgres perde metade da precisão
+### 5. `REAL` no Postgres perde metade da precisão
 
 Esta é a única desta lista que corrompe dado sem volta.
 
@@ -203,7 +262,7 @@ que o check-in existe para ter.
 
 Use `double precision` nas quatro colunas.
 
-### 5. A busca do painel para de achar
+### 6. A busca do painel para de achar
 
 O `LIKE` da linha 970 ignora maiúscula no SQLite e não ignora no Postgres. O
 gestor digita "vidros" e não acha "Vidros". Devolve zero fichas, sem erro. Use
@@ -213,7 +272,7 @@ Deixe `LIKE` na linha 715. Aquele compara contra um prefixo que o próprio
 servidor gerou, sempre na mesma caixa, e `ILIKE` não mudaria resultado nenhum e
 impediria o índice de ser usado.
 
-### 6. A média da pesquisa vira texto no JSON
+### 7. A média da pesquisa vira texto no JSON
 
 As linhas 1153, 1159 e 1182 fazem `ROUND(AVG(nota),1) media`. No Postgres, `AVG`
 sobre inteiro devolve `numeric`, e o psycopg entrega isso como `Decimal`. O Flask
@@ -281,6 +340,38 @@ engorda o pacote.
 Roda uma vez, do Mac, contra o Neon. Cria as oito tabelas do `SCHEMA`, as duas
 deste documento, as dez colunas de `COLUNAS_EXTRA` e os dez índices. É o
 `init_db()` das linhas 406 a 462 convertido.
+
+Quatro tabelas nasceram nos commits de 02/09 e pedem atenção no `setup_db.py`.
+
+A `viagens`, linha 285, e a `viagem_clientes`, linha 298, guardam datas como
+texto, igual às outras. Mantenha. A `viagem_clientes` precisa de duas coisas que
+não estão no código de hoje. Uma é o índice único de `(viagem_id,
+cliente_codigo)` do silêncio 3. A outra é o `ON DELETE CASCADE` para `viagem_id`,
+porque o DELETE da linha 1476 limpa as duas tabelas na mão e deixa órfão se
+falhar no meio. O `visitado` da linha 306 é 0 ou 1 e tem que continuar inteiro,
+porque a linha 1455 faz `SUM(visitado)`.
+
+A `experiencia`, linha 311, guarda a nota como inteiro. Some com a média que vira
+`Decimal`, no silêncio 7. Ela também precisa de um índice em `cliente_codigo`,
+que hoje não existe, pelo motivo do item de duração da função lá embaixo. A
+coluna `unidade` está declarada duas vezes, na linha 320 e em `COLUNAS_EXTRA` na
+linha 388. Em banco novo, escreva uma vez só.
+
+A `anexos`, linha 325, guarda em `arquivo` o caminho da evidência, que passa a
+ser o caminho no Blob. Sem restrição única em `(ficha_uuid, arquivo)`, uma
+sincronização repetida grava a mesma evidência de novo.
+
+Uma armadilha em `clientes`. A consulta de sugestão, linha 1370, faz
+`GROUP BY c.codigo` e seleciona `c.nome`, `c.cidade` e outras colunas. No
+Postgres isso só é válido porque `codigo` é a chave primária da tabela. Se o
+`setup_db.py` trocar por `UNIQUE NOT NULL`, ou acrescentar um `id` serial como
+chave, a consulta passa a dar `column "c.nome" must appear in the GROUP BY
+clause`. Deixe `codigo TEXT PRIMARY KEY`.
+
+Índices que o `init_db()` cria e o `setup_db.py` tem que repetir, nas linhas 451
+a 460: `ix_vc_viagem`, `ix_vc_cliente`, `ix_exp_ficha`, `ix_exp_metrica`,
+`ix_anexos_ficha`, `ix_oc_status`, `ix_oc_cliente`, `ix_fichas_usuario`,
+`ix_fichas_data` e `ix_clientes_nome`.
 
 Não deixe criação de tabela rodando a cada requisição. No Postgres, DDL toma
 trava exclusiva, e duas instâncias frias subindo juntas se travam. O
@@ -381,8 +472,12 @@ placeholders, e somem na troca por `ANY`. Converta consulta por consulta.
 
 **Formatação de string com `%` colide com o placeholder.** Depois da troca, um
 `"%s = ?" % campo` vira `"%s = %s" % campo` e o Python levanta `TypeError` antes
-de tocar no banco. Vale para as linhas 966, 976, 1024 e 1069, mais a 308 que some
-com o `setup_db.py`. Passe todas para f-string.
+de tocar no banco. Vale para as linhas 966, 976, 1024, 1069, 1357, 1378 e 1487,
+mais a 308 que some com o `setup_db.py`. Passe todas para f-string.
+
+A da linha 1487 é a que dói mais, porque derruba todo PATCH de viagem, ou seja,
+mudar nome, data, rota, observação e responsável. O `campo` ali vem de uma tupla
+escrita no código, então f-string não abre porta para injeção.
 
 **As duas cláusulas `IN` ficam melhores com `ANY`.** A linha 1015, na cobertura,
 faz `",".join("?" * len(curvas))`. Isso funciona por acidente, porque o `join`
@@ -392,21 +487,28 @@ código produz `%,s,%,s,%,s`, que é SQL inválido, não erro de Python. Escreva
 
 A linha 1356, nas rotas da carteira, repete o mesmo padrão com `cidades`. Trate
 igual. O `c.cidade LIKE ?` da linha 1360, logo abaixo, cai no problema de caixa
-da seção 5 e precisa de `ILIKE`, porque a cidade vem digitada pelo usuário.
+da seção 6 e precisa de `ILIKE`, porque a cidade vem digitada pelo usuário.
 
-**Nove lugares indexam resultado por posição** e quebram com `dict_row`, que só
-aceita nome. No `app.py` são as linhas 421, 718, 720, 995, 997, 999, 1087 e 1093.
+**Dez lugares indexam resultado por posição** e quebram com `dict_row`, que só
+aceita nome. No `app.py` são as linhas 421, 439, 718, 720, 995, 997, 999, 1087,
+1093 e 1513.
 No `importar_carteira.py` são as linhas 134, 152, 160 e 163, incluindo dois
 desempacotamentos de tupla. Dê apelido a cada coluna, por exemplo
 `SELECT DISTINCT substr(recebido_em,1,7) AS mes`, e leia por nome.
 
-**`INTEGER PRIMARY KEY AUTOINCREMENT` vira `GENERATED ALWAYS AS IDENTITY`.** Só
-na tabela `usuarios`, linha 260.
+**`INTEGER PRIMARY KEY AUTOINCREMENT` vira `GENERATED ALWAYS AS IDENTITY`.** Em
+cinco tabelas, nas linhas 260, 286, 299, 312 e 326.
+
+**`cur.lastrowid` não existe no psycopg 3.** A linha 1448 devolve o id da viagem
+recém-criada com `cur.lastrowid`, e isso vira `AttributeError`, ou seja, 500 no
+POST de `/api/viagens`. O `viagens.js` faz `await r.json()` sobre a página de
+erro do Flask, a promessa rejeita, e o botão de criar viagem não faz nada, sem
+mensagem na tela. Escreva `INSERT ... RETURNING id` e leia `row["id"]`.
 
 **`REAL` vira `double precision`** nas linhas 277, 371, 372 e 373, pelo motivo do
-silêncio 4.
+silêncio 5.
 
-**`int()` sem guarda em parâmetro de URL.** As linhas 872 e 974 fazem
+**`int()` sem guarda em parâmetro de URL.** As linhas 872, 974 e 1350 fazem
 `int(request.args.get("limite", ...))`. Um `?limite=abc` dá 500. Vale hoje e
 depois, e é uma linha para consertar.
 
@@ -441,6 +543,23 @@ sem tocar, a validação de `RE_UUID`, o teto de 6 MB da linha 650 e a checagem 
 assinatura binária. Só a escrita da linha 662 muda. O `foto_arquivo` passa a
 guardar o caminho no Blob, nas tabelas `fichas` e `ocorrencias`.
 
+A `_salvar_anexos` da linha 670 chama a mesma `_salvar_foto`, até 8 vezes por
+ficha, uma por evidência. É uma segunda porta para o mesmo `open(destino, "wb")`,
+e não tem `try` em volta. Na Vercel a primeira evidência levanta
+`OSError: Read-only file system`, a requisição inteira morre, e o lote de fichas
+se perde junto. Migre as duas funções na mesma leva.
+
+Apontar `FOTOS_DIR` para `/tmp` não resolve, piora. A gravação passa, a linha
+entra na tabela `anexos` com o nome do arquivo, e a foto some quando a instância
+morre. O painel do gestor renderiza imagem quebrada e o banco continua afirmando
+que a evidência existe.
+
+Um detalhe do formato do caminho. A rota `/foto/<nome>` valida com
+`re.fullmatch(r"[A-Za-z0-9_\-]+\.(jpg|png)", nome)` na linha 1551, e esse padrão
+não aceita barra. Se o caminho no Blob virar `fotos/<uuid>-anexo0.jpg`, a rota
+devolve 404 para toda foto, calada. Ou o Blob guarda com nome sem barra, ou a
+rota muda junto.
+
 O SDK oficial do Blob é em JavaScript. Em Python, use a API HTTP com `requests`,
 mandando um PUT para `https://blob.vercel-storage.com/<caminho>` com o cabeçalho
 `Authorization: Bearer $BLOB_READ_WRITE_TOKEN`. Confira o formato atual na
@@ -468,8 +587,16 @@ dentro do JSON. A foto sai em 1280px e qualidade 0,7, uns 250 KB, e o base64
 infla um terço. Dez fichas com foto chegam perto de 4 MB, e o limite de corpo de
 requisição da Vercel é 4,5 MB.
 
+Essa conta é de antes das evidências. Hoje uma ficha carrega a foto principal
+mais até 8 anexos, cada um comprimido do mesmo jeito. São 9 fotos, umas 333 KB
+cada depois do base64, perto de 3 MB numa ficha só. Duas fichas com evidência
+estouram o limite, e lote de 3 não salva.
+
 Baixe o lote para 3 na linha 532 e ajuste o `payload["fichas"][:50]` da linha 750
-para o mesmo número. A fila offline continua igual, só manda em mais viagens.
+para o mesmo número. Junto disso, baixe o `MAX_ANEXOS` da linha 667 de 8 para 3,
+ou mande a ficha com anexo sozinha na requisição. O teto de 6 MB por foto da
+linha 650 permite, no papel, 54 MB numa ficha. A fila offline continua igual, só
+manda em mais viagens.
 
 Baixe o `MAX_CONTENT_LENGTH` da linha 217 de 12 MB para 4 MB. Hoje ele está acima
 do limite da plataforma, então nunca dispara, e quem recusa é a borda da Vercel,
@@ -483,6 +610,11 @@ arquivos do shell não têm hash no nome. Suba para `rep-campo-v2` no mesmo comm
 da migração, senão o celular que já tem o app instalado continua servindo a
 versão antiga e você testa a velha achando que é a nova.
 
+O `static/viagens.js` não está na lista do shell do `sw.js`, e a tela `/viagens`
+é nova. Ponha ele lá, e confirme que `viagens.js`, `viagens.html`, `painel.css` e
+`styles.css` entram no `includeFiles` do `vercel.json`. Tela sem o JS dela abre
+uma casca morta, sem erro nenhum na tela.
+
 ## Limites da plataforma
 
 **Tamanho da resposta.** A rota `/api/gestor/cobertura`, linhas 1016 a 1056,
@@ -494,6 +626,22 @@ for cortada, o `r.json()` do painel levanta e a tela fica em branco, sem
 mensagem, e o botão de baixar CSV exporta só o que chegou. Ponha `LIMIT` no
 servidor e paginação, ou pelo menos meça o tamanho real com a carteira do Ricardo
 antes de publicar.
+
+**Uma consulta por ficha, dentro do laço.** A linha 986 busca os anexos de cada
+ficha separadamente, e o `limite` da linha 974 chega a 500. No SQLite isso é
+memória e ninguém nota. No Neon são 500 idas e voltas pelo pooler, somadas ao
+cold start. A rota estoura o tempo, devolve 504, e o painel do gestor abre em
+branco porque o `r.json()` levanta. Faça uma consulta só, com
+`WHERE ficha_uuid = ANY(%s)` e a lista de uuids, e agrupe em Python. O mesmo
+padrão, em escala menor, está na linha 1455, com 1 mais 60 consultas para contar
+a aderência de cada viagem. Ali um `LEFT JOIN` com `GROUP BY` resolve.
+
+**A sugestão de visita varre a carteira inteira.** A consulta da linha 1370 não
+tem `LIMIT` no servidor, porque o `total` devolvido precisa do conjunto todo, e
+tem duas subconsultas correlacionadas por linha. Uma delas filtra
+`experiencia.cliente_codigo`, que não tem índice. Crie `ix_exp_cliente`, ou troque
+as duas subconsultas por `LEFT JOIN` agregado. É a consulta que a tela de viagens
+chama a cada busca.
 
 **Duração da função.** Por ficha, o `api_receber_fichas` decodifica base64,
 manda a foto para o Blob e faz dois `INSERT`, tudo em série com ida e volta de
@@ -569,6 +717,20 @@ pronto.
 município, objetivo, próximo passo e foto obrigatória. O servidor só exige
 `uuid`, `tipo` e `cliente_nome`. Um POST montado à mão passa por cima de tudo.
 
+**A visita de um marca o roteiro de todos.** O `UPDATE viagem_clientes` da linha
+856 casa por `cliente_codigo` e por status da viagem, sem filtrar de quem é o
+roteiro. Quando o representante A registra a visita, o cliente aparece como
+visitado em toda viagem aberta que o tenha, inclusive nas de B e C. A aderência
+de B sobe porque A trabalhou. Filtre pelo dono da viagem, ou pelo `viagem_id` que
+o app já sabe.
+
+**A carteira inteira ficou aberta para o representante.** As rotas `/api/rotas`,
+linha 1308, e `/api/sugestao`, linha 1338, exigem só estar logado e devolvem
+`vol_12m`, `curva` e `vendedor` de todo cliente ativo. Antes desses commits esse
+recorte só saía por `/api/gestor/cobertura`. Pode ser decisão de produto do
+Ricardo, e não é problema da migração. Fica escrito porque um representante que
+sai da empresa leva o faturamento por cliente da carteira toda.
+
 **O filtro mensal usa UTC.** Uma ficha registrada às 21h30 de 31/08 em Imperatriz
 é 00h30 de 01/09 em UTC e cai no mês seguinte.
 
@@ -599,7 +761,9 @@ Vale uma nota no topo dizendo o que mudou e em que data.
 
 ## Ordem de execução
 
-1. Conserte o tratamento de erro do `sincronizar()` no `static/app.js`.
+1. Conserte o tratamento de erro do `sincronizar()` no `static/app.js`, o login
+   dentro do SQL da linha 1450 e a permissão das quatro rotas de viagem. Os três
+   valem no servidor de hoje e não dependem da migração.
 2. Confirme que `.env` está no `.gitignore`.
 3. Crie `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN` e `REP_SECRET_KEY` nas variáveis
    de ambiente do projeto na Vercel. As três, não duas. Um `.env` no Mac não
@@ -608,10 +772,12 @@ Vale uma nota no topo dizendo o que mudou e em que data.
    arquivo vazar.
 4. Escreva o `setup_db.py`, com `double precision` no lugar de `REAL`, e rode do
    Mac. Confira as dez tabelas no Neon.
-5. Converta o `app.py`, seguindo as seções acima na ordem em que aparecem.
+5. Converta o `app.py`, seguindo as seções acima na ordem em que aparecem. As
+   rotas de viagem e de sugestão são as mais novas e as menos cobertas por uso
+   real, então teste elas com dois usuários diferentes.
 6. Adicione `requirements.txt`, `vercel.json`, `api/index.py` e `.vercelignore`.
-7. Ajuste o lote e o `MAX_CONTENT_LENGTH`.
-8. Suba a versão do cache no `static/sw.js`.
+7. Ajuste o lote, o `MAX_ANEXOS` e o `MAX_CONTENT_LENGTH`.
+8. Suba a versão do cache no `static/sw.js` e ponha o `viagens.js` no shell.
 9. Converta `criar_usuario.py` e `importar_carteira.py`, e rode os dois do Mac
    para criar o primeiro gestor e carregar a carteira.
 10. Publique e teste.
@@ -637,8 +803,18 @@ Mande um lote com uma ficha inválida no meio. As outras têm que entrar, e a
 inválida tem que voltar na lista de rejeitadas com motivo na tela. Se a fila
 inteira ficar parada, o tratamento de transação por ficha não está lá.
 
+Registre uma visita com três evidências além da foto principal. As quatro têm
+que abrir no painel do gestor. Se abrir só a principal, os anexos ainda estão
+indo para o disco.
+
+Crie uma viagem, ponha clientes nela pelo botão duas vezes seguidas e abra o
+roteiro. Cada cliente tem que aparecer uma vez só.
+
+Entre com outro representante e tente abrir a viagem do primeiro pela URL,
+trocando o número. Tem que dar 403.
+
 Busque no painel por um nome em minúsculas que está gravado com maiúscula. Tem
-que achar.
+que achar. Faça o mesmo na busca de cidade da tela de viagens.
 
 Confira no painel um cliente de volume alto. O valor precisa bater com o CSV até
 os centavos. Se arredondou, a coluna ficou `REAL`.
