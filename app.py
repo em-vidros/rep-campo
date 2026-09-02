@@ -299,15 +299,49 @@ def login_obrigatorio(fn):
     return wrapper
 
 
-def gestor_obrigatorio(fn):
-    """Rotas de gestao: so papel 'gestor'. REP nunca ve ficha de outro."""
+# Tres papeis (definido pelo Ricardo em 02/09/2026):
+#   rep    - representante em campo; ve so as proprias fichas
+#   gestor - ve e faz TUDO no operacional: fichas, ocorrencias, pesquisa,
+#            cobertura e o planejamento de viagem de qualquer representante
+#   admin  - o gestor mais a administracao do app: usuarios e papeis.
+#            Hoje so o Ricardo.
+PAPEIS = ("rep", "gestor", "admin")
+PAPEIS_GESTAO = ("gestor", "admin")
+
+
+def eh_gestor():
+    return session.get("papel") in PAPEIS_GESTAO
+
+
+def eh_admin():
+    return session.get("papel") == "admin"
+
+
+def admin_obrigatorio(fn):
+    """Administracao do app: criar usuario, mudar papel, redefinir senha."""
     @wraps(fn)
     def wrapper(*a, **kw):
         if "uid" not in session:
             if request.path.startswith("/api/"):
                 return jsonify({"erro": "nao_autenticado"}), 401
             return redirect(url_for("login", next=request.path))
-        if session.get("papel") != "gestor":
+        if not eh_admin():
+            if request.path.startswith("/api/"):
+                return jsonify({"erro": "sem_permissao"}), 403
+            return redirect(url_for("index"))
+        return fn(*a, **kw)
+    return wrapper
+
+
+def gestor_obrigatorio(fn):
+    """Rotas de gestao: gestor e admin. REP nunca ve ficha de outro."""
+    @wraps(fn)
+    def wrapper(*a, **kw):
+        if "uid" not in session:
+            if request.path.startswith("/api/"):
+                return jsonify({"erro": "nao_autenticado"}), 401
+            return redirect(url_for("login", next=request.path))
+        if not eh_gestor():
             if request.path.startswith("/api/"):
                 return jsonify({"erro": "sem_permissao"}), 403
             return redirect(url_for("index"))
@@ -814,7 +848,7 @@ def api_receber_fichas():
 @login_obrigatorio
 def api_listar_fichas():
     limite = min(_inteiro(request.args.get("limite"), 50), 300)
-    if session.get("papel") == "gestor":
+    if eh_gestor():
         rows = get_db().execute(
             "SELECT * FROM fichas ORDER BY recebido_em DESC LIMIT %s", (limite,)
         ).fetchall()
@@ -834,7 +868,7 @@ def api_resumo():
     mes = datetime.now(timezone.utc).strftime("%Y-%m")
     where = "WHERE substr(recebido_em,1,7) = %s"
     args = [mes]
-    if session.get("papel") != "gestor":
+    if not eh_gestor():
         where += " AND usuario_login = %s"
         args.append(session["login"])
     total = db.execute("SELECT COUNT(*) c FROM fichas " + where, args).fetchone()["c"]
@@ -891,7 +925,8 @@ def _norm(txt):
 @app.route("/painel")
 @gestor_obrigatorio
 def painel():
-    return render_template("painel.html", nome=session.get("nome"), tipos=TIPOS)
+    return render_template("painel.html", nome=session.get("nome"),
+                           papel=session.get("papel"), tipos=TIPOS)
 
 
 @app.route("/api/gestor/fichas")
@@ -1193,13 +1228,13 @@ def conta():
 
 
 @app.route("/usuarios")
-@gestor_obrigatorio
+@admin_obrigatorio
 def usuarios():
     return render_template("usuarios.html", nome=session.get("nome"))
 
 
 @app.route("/api/gestor/usuarios")
-@gestor_obrigatorio
+@admin_obrigatorio
 def api_usuarios():
     rows = get_db().execute(
         "SELECT id, login, nome, papel, ativo, criado_em FROM usuarios ORDER BY ativo DESC, nome"
@@ -1208,12 +1243,12 @@ def api_usuarios():
 
 
 @app.route("/api/gestor/usuarios", methods=["POST"])
-@gestor_obrigatorio
+@admin_obrigatorio
 def api_criar_usuario():
     d = request.get_json(silent=True) or {}
     login_txt = re.sub(r"[^a-z0-9._-]", "", (d.get("login") or "").strip().lower())[:30]
     nome = (d.get("nome") or "").strip()[:80]
-    papel = d.get("papel") if d.get("papel") in ("rep", "gestor") else "rep"
+    papel = d.get("papel") if d.get("papel") in PAPEIS else "rep"
     senha = d.get("senha") or ""
     if not login_txt or not nome:
         return jsonify({"erro": "login_e_nome_obrigatorios"}), 400
@@ -1230,7 +1265,7 @@ def api_criar_usuario():
 
 
 @app.route("/api/gestor/usuarios/<int:uid>", methods=["PATCH"])
-@gestor_obrigatorio
+@admin_obrigatorio
 def api_alterar_usuario(uid):
     d = request.get_json(silent=True) or {}
     db = get_db()
@@ -1243,9 +1278,11 @@ def api_alterar_usuario(uid):
             return jsonify({"erro": "nao_pode_desativar_a_si_mesmo"}), 400
         db.execute("UPDATE usuarios SET ativo = %s WHERE id = %s",
                    (1 if d["ativo"] else 0, uid))
-    if "papel" in d and d["papel"] in ("rep", "gestor"):
-        if uid == session["uid"] and d["papel"] != "gestor":
+    if "papel" in d and d["papel"] in PAPEIS:
+        if uid == session["uid"] and d["papel"] != "admin":
             return jsonify({"erro": "nao_pode_rebaixar_a_si_mesmo"}), 400
+        if d["papel"] == "admin" and not eh_admin():
+            return jsonify({"erro": "so_admin_promove_admin"}), 403
         db.execute("UPDATE usuarios SET papel = %s WHERE id = %s", (d["papel"], uid))
     if "senha" in d:
         if len(d["senha"] or "") < SENHA_MIN:
@@ -1414,7 +1451,7 @@ def api_viagens():
         return jsonify({"ok": True, "id": row["id"]})
 
     # O login ia direto para dentro do texto do SQL, entre aspas. Agora e parametro.
-    if session.get("papel") == "gestor":
+    if eh_gestor():
         onde, args = "", []
     else:
         onde = "WHERE responsavel = %s OR criada_por = %s"
@@ -1440,7 +1477,7 @@ def _pode_na_viagem(v):
 
     Sem isto, trocar o numero na URL dava acesso ao roteiro de qualquer outro.
     """
-    return (session.get("papel") == "gestor"
+    return (eh_gestor()
             or v["criada_por"] == session.get("login")
             or v["responsavel"] == session.get("login"))
 

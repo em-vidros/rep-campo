@@ -15,7 +15,7 @@
     <div class="topo-acoes">
       <a class="sair" href="/">app do rep</a>
       {% if papel == 'gestor' %}<a class="sair" href="/painel">painel</a>
-      <a class="sair" href="/usuarios">usuários</a>{% endif %}
+      {% if papel == 'admin' %}<a class="sair" href="/usuarios">usuários</a>{% endif %}{% endif %}
       <a class="sair" href="/logout">sair</a>
     </div>
   </div>

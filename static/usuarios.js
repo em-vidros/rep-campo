@@ -14,7 +14,8 @@ const ERROS = {
   senha_curta: 'A senha precisa de pelo menos 8 caracteres.',
   login_e_nome_obrigatorios: 'Informe nome e login.',
   nao_pode_desativar_a_si_mesmo: 'Você não pode desativar a si mesmo.',
-  nao_pode_rebaixar_a_si_mesmo: 'Você não pode tirar o próprio acesso de gestor.',
+  nao_pode_rebaixar_a_si_mesmo: 'Você não pode tirar o próprio acesso de admin.',
+  so_admin_promove_admin: 'Só um admin pode promover outro admin.',
 };
 
 async function carregar() {
@@ -26,7 +27,7 @@ async function carregar() {
     return `<tr class="${u.ativo ? '' : 'vencido'}">
       <td data-label="Nome"><b>${esc(u.nome)}</b>${eu ? ' <span class="tag">você</span>' : ''}</td>
       <td data-label="Login">${esc(u.login)}</td>
-      <td data-label="Papel">${u.papel === 'gestor' ? 'Gestor' : 'Representante'}</td>
+      <td data-label="Papel">${ {admin:'Admin', gestor:'Gestor', rep:'Representante'}[u.papel] || u.papel }</td>
       <td data-label="Situação">${u.ativo ? '<span class="selo forte">ativo</span>'
                                           : '<span class="selo leve">inativo</span>'}</td>
       <td data-label="Ações">

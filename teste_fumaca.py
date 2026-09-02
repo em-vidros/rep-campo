@@ -47,7 +47,9 @@ def entrar(cli, login, senha=SENHA):
 def main():
     appmod.app.config["TESTING"] = True
     marca = "t" + uuidlib.uuid4().hex[:12]
-    contas = {"g." + marca[1:9]: "gestor", "r." + marca[1:9]: "rep",
+    # papel 'admin' desde 02/09: gestor faz todo o operacional, mas quem
+    # administra usuarios e o admin. A conta de gestao do teste acompanha.
+    contas = {"g." + marca[1:9]: "admin", "r." + marca[1:9]: "rep",
               "o." + marca[1:9]: "rep"}
     with appmod.app.app_context():
         db = appmod.get_db()
@@ -80,7 +82,7 @@ def main():
     checa("arquivo estatico", rep.get("/static/app.js").status_code == 200)
     checa("tela do painel", gestor.get("/painel").status_code == 200)
     checa("tela da conta", rep.get("/conta").status_code == 200)
-    checa("tela de usuarios so do gestor", rep.get("/usuarios").status_code in (302, 403))
+    checa("tela de usuarios so do admin", rep.get("/usuarios").status_code in (302, 403))
 
     # lote com uma ficha boa, uma tecnica com evidencia e uma invalida no meio
     uuid_ok = marca + "-ok"
@@ -158,7 +160,7 @@ def main():
     roteiro = rep.get("/api/viagens/%d" % vid).get_json()
     checa("o roteiro tem um cliente so", len(roteiro["clientes"]) == 1, len(roteiro["clientes"]))
 
-    checa("o gestor abre qualquer viagem", gestor.get("/api/viagens/%d" % vid).status_code == 200)
+    checa("gestor abre qualquer viagem", gestor.get("/api/viagens/%d" % vid).status_code == 200)
     outro = appmod.app.test_client()
     entrar(outro, loutro)
     checa("outro rep nao le a viagem", outro.get("/api/viagens/%d" % vid).status_code == 403,
@@ -177,7 +179,7 @@ def main():
     r = gestor.post("/api/gestor/usuarios",
                     json={"login": novo_login, "nome": "Criado no teste",
                           "senha": "senha-de-teste-1", "papel": "rep"})
-    checa("gestor cria usuario", r.status_code == 200, r.get_json())
+    checa("admin cria usuario", r.status_code == 200, r.get_json())
     checa("senha curta e recusada",
           gestor.post("/api/gestor/usuarios",
                       json={"login": novo_login + "x", "nome": "X", "senha": "123"}
@@ -186,7 +188,7 @@ def main():
     criado = next((u for u in lista["usuarios"] if u["login"] == novo_login), None)
     checa("o usuario novo aparece na lista", criado is not None)
     if criado:
-        checa("gestor redefine a senha",
+        checa("admin redefine a senha",
               gestor.patch("/api/gestor/usuarios/%d" % criado["id"],
                            json={"senha": "outra-senha-1"}).status_code == 200)
         novo_cli = appmod.app.test_client()
@@ -196,7 +198,7 @@ def main():
                                             "nova": "terceira-senha-1",
                                             "confirma": "terceira-senha-1"}
                             ).status_code in (200, 302))
-        checa("gestor desativa o usuario",
+        checa("admin desativa o usuario",
               gestor.patch("/api/gestor/usuarios/%d" % criado["id"],
                            json={"ativo": False}).status_code == 200)
         checa("desativado nao entra", not entrar(appmod.app.test_client(),
