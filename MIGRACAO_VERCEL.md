@@ -1,9 +1,10 @@
 # Migração do REP Campo para Vercel e Neon
 
-Escrito pela TI em 02/09/2026, a pedido do Henrique. Reescrito no mesmo dia
-contra o commit `026c5a7`, depois que o Ricardo publicou a v2 e o `app.py` passou
-de 681 para 1.111 linhas. Todo número de linha citado aqui vale para essa versão.
-Se o arquivo mudou de novo, confira antes de confiar no número.
+Escrito pela TI em 02/09/2026, a pedido do Henrique, contra o commit `f4e66da`,
+com o `app.py` em 1.123 linhas. Cada número de linha citado aqui foi conferido
+por script contra o arquivo. Depois passou por uma segunda revisão independente
+do código inteiro, que achou coisas que a primeira versão errava. Se o `app.py`
+mudar de novo, os números saem do lugar.
 
 Quem executa a migração é o Claude do Ricardo.
 
@@ -16,28 +17,65 @@ funcionamento offline, e consertar isso no servidor depende de uma correção de
 rede sem prazo. Na Vercel o certificado já vem pronto.
 
 O app continua sendo o seu, em Python e Flask, com as mesmas telas. Muda onde ele
-guarda os dados e as fotos. Guardava num arquivo no disco da máquina, passa a
-guardar num banco na nuvem.
+guarda os dados e as fotos.
 
-Três coisas que hoje funcionam parariam de funcionar em silêncio depois da
-mudança, sem mensagem de erro nenhuma. Estão nas seções marcadas abaixo. São
-elas que justificam este documento existir.
+Uma coisa antes de começar. Boa parte deste documento trata de coisas que passam
+a funcionar errado sem dar erro, que é o tipo de problema que ninguém descobre
+até alguém reclamar.
+
+## Conserte antes de migrar
+
+### Resolvido pelo Ricardo em 02/09
+
+O `app.py` usava `SENHA_MIN` em quatro lugares e chamava `_hash()` em três, e
+nenhum dos dois existia no repositório. As três telas de usuário da v2 devolviam
+500 desde a publicação, e o `static/usuarios.js` mostrava a mesma mensagem
+genérica para qualquer falha, então a causa não aparecia.
+
+O commit `d86b0f9` definiu os dois, com `SENHA_MIN = 8` e o `_hash` chamando
+`generate_password_hash` com `pbkdf2:sha256`, o mesmo método do
+`criar_usuario.py`. Fica registrado porque o teste de aceite lá embaixo cobre as
+três telas, e porque a escolha do pbkdf2 tem que ser mantida no port.
+
+### O app engole todo erro de sincronização
+
+O `static/app.js`, na linha 422, tem um `catch` com o comentário "offline ou
+servidor fora, a fila continua guardada". Ele captura qualquer falha, inclusive
+resposta 4xx e 5xx do servidor, e não mostra nada.
+
+Junte com a linha 404, que manda sempre `fila.slice(0, 10)`, ou seja, a mesma
+cabeça de fila em toda tentativa. Uma ficha que o servidor recusa trava a fila
+para sempre. O app tenta a cada 60 segundos, falha a cada 60 segundos, e o
+representante vê só um número de fila que não desce. Ele continua registrando
+visitas por cima, e nenhuma sobe.
+
+Hoje isso quase não acontece, porque o servidor local aceita quase tudo. Depois
+da migração aparecem quatro jeitos novos de o servidor recusar uma ficha: o 413
+da Vercel por corpo grande demais, o 504 por estouro de duração, a falha de
+upload no Blob e o erro de transação da seção seguinte.
+
+Faça o `sincronizar()` distinguir três casos antes de migrar. Sem rede, deixa na
+fila e fica quieto. Resposta 4xx, mostra o motivo e põe aquela ficha de lado para
+não travar as outras. Resposta 5xx, tenta de novo com espera crescente e avisa na
+tela depois de algumas falhas.
+
+Sem isso você migra às cegas. Todo defeito desta lista vira "não aconteceu nada".
 
 ## O que não pode mudar
 
 Você revisou a segurança em 01/09 e testou quatro ataques. As quatro defesas
-atravessam a migração intactas. Se alguma sair mais fraca, o port está errado.
+atravessam a migração, mas duas mudam de forma.
 
-1. Nome do arquivo de foto validado por `RE_UUID`, e caminho final conferido
-   contra a pasta de destino. Impede escrever arquivo em caminho arbitrário.
-2. Tipo da foto decidido pela assinatura binária, JPEG e PNG apenas, nunca pelo
-   que o cliente declara. Impede subir executável disfarçado de foto.
-3. Bloqueio de força bruta no login, 8 tentativas por origem em 15 minutos,
-   resposta 429.
-4. Limite de tamanho por campo de texto, `relato` em 5.000 caracteres e os
-   demais entre 20 e 600.
-
-A defesa 3 é a que quebra na migração. Está na seção do freio de força bruta.
+1. Nome do arquivo de foto validado por `RE_UUID`, linha 181, e caminho final
+   conferido contra a pasta de destino, linhas 526 e 527. Com a foto indo para o
+   Blob não existe mais caminho de arquivo, então a conferência de pasta perde o
+   sentido e o `RE_UUID` passa a ser a única defesa sobre o nome. Não relaxe ele.
+2. Tipo da foto decidido pela assinatura binária, linhas 499 e 521, JPEG e PNG
+   apenas. Atravessa sem mudança.
+3. Bloqueio de força bruta, 8 tentativas em 15 minutos. Esta quebra. Está na
+   seção dos silêncios.
+4. Limite de tamanho por campo de texto, linhas 171 a 176. Atravessa sem
+   mudança.
 
 ## Por que o primeiro deploy falhou
 
@@ -45,38 +83,56 @@ O repositório não tem `requirements.txt`, `vercel.json` nem pasta `api/`. A
 Vercel não achou função para executar nem dependência para instalar, e parou.
 
 Mesmo com esses arquivos, o app quebraria ao subir. O `app.py` escreve em disco
-três vezes durante a importação do módulo, nas linhas 31, 149 e 1106: cria a
-pasta de fotos, grava `dados/secret.key` e cria o banco SQLite. Na Vercel o
-sistema de arquivos é somente leitura fora de `/tmp`.
+durante a importação do módulo, nas linhas 31, 149, 151 e 1106: cria a pasta de
+fotos, grava e ajusta permissão de `dados/secret.key`, e cria o banco SQLite. Na
+Vercel o sistema de arquivos é somente leitura fora de `/tmp`. Qualquer uma
+dessas derruba a partida da instância, e aí toda requisição dela devolve 500.
 
-E o SQLite não sobreviveria. Cada requisição pode cair numa instância diferente,
-com disco próprio e descartável.
+## Os silêncios da migração
 
-## Os três silêncios
+Esta é a parte que importa. Seis coisas continuam parecendo certas no código
+depois da migração e param de funcionar sem erro.
 
-Esta é a parte que importa. Três coisas continuam parecendo certas no código
-depois da migração, e param de funcionar sem erro.
+### 1. Um erro no meio do lote apaga o lote inteiro
 
-### 1. O número da ocorrência passa a colidir
+No `sqlite3`, um `execute` que falha não estraga a conexão, e o laço de
+`api_receber_fichas`, linhas 594 a 671, seguiria para a próxima ficha. No
+psycopg é diferente: o primeiro erro aborta a transação, e todo `execute`
+seguinte levanta `InFailedSqlTransaction`. O `db.commit()` da linha 673 nunca
+roda. As dez fichas do lote se perdem, inclusive as que já tinham passado.
 
-O `_proxima_ocorrencia` da linha 550 lê o último número do ano e soma 1. Depois,
-na linha 658, o `INSERT OR IGNORE` grava a ocorrência nova. Ler e depois gravar,
-sem trava no meio.
+Combinado com o `catch` do cliente, o representante não vê nada.
 
-No SQLite isso é seguro por acidente, porque existe um processo só e a escrita é
-serializada. No Postgres com várias instâncias, duas sincronizações ao mesmo
-tempo leem o mesmo último número e as duas calculam `OC-2026-0007`. A primeira
-grava. A segunda cai no `IGNORE` e é descartada sem erro. A ficha da segunda fica
-com `ocorrencia_num = OC-2026-0007` apontando para a reclamação do outro cliente.
+Trate ficha a ficha. Use um savepoint por ficha, ou capture a exceção dentro do
+laço e faça `rollback` só daquela, empurrando o `uuid` para a lista de
+rejeitadas. Assim uma ficha ruim é recusada com motivo e as outras nove entram.
 
-O estrago é uma reclamação técnica que some e um representante vendo o problema
-de outro cliente sob o número dele. Nada aparece em log.
+O mesmo vale para `api_atualizar_ocorrencia`, linhas 915 a 937, que faz até
+quatro `UPDATE` antes do `commit`. Se o primeiro falhar, os outros levantam
+`InFailedSqlTransaction` e a rota devolve 500 escondendo o erro real.
 
-O conserto é uma tabela de contador, com incremento atômico:
+### 2. O número da ocorrência passa a colidir
+
+O `_proxima_ocorrencia`, linha 550, lê o último número do ano e soma 1. Depois, a
+linha 658 grava com `INSERT OR IGNORE`. Ler e depois gravar, sem trava no meio.
+
+No SQLite isso é seguro por acidente, porque existe um processo só. No Postgres
+com várias instâncias, duas sincronizações simultâneas leem o mesmo último número
+e as duas calculam `OC-2026-0007`. A primeira grava. A segunda cai no `IGNORE` e
+é descartada sem erro. Só que a linha 652 já gravou esse número na ficha da
+segunda, e a linha 670 devolve o número para o celular, que mostra "Ocorrencia
+aberta: OC-2026-0007".
+
+Uma reclamação técnica some do painel, e a ficha dela aponta para o problema de
+outro cliente. Pior ainda: a linha 925 faz `UPDATE fichas SET ocorrencia_status =
+'resolvida' WHERE ocorrencia_num = ?`, então o gestor resolvendo uma ocorrência
+fecha duas fichas.
+
+O conserto é uma tabela de contador com incremento atômico:
 
 ```sql
 CREATE TABLE IF NOT EXISTS contador_ocorrencias (
-    ano  TEXT PRIMARY KEY,
+    ano TEXT PRIMARY KEY,
     ultimo INTEGER NOT NULL DEFAULT 0
 );
 ```
@@ -94,18 +150,24 @@ def _proxima_ocorrencia(db):
 O Postgres resolve a disputa dentro da própria instrução. Duas chamadas
 simultâneas recebem números diferentes, sempre.
 
-Troque também o `INSERT OR IGNORE` da linha 658 por `ON CONFLICT (numero) DO
-NOTHING`, que é a sintaxe do Postgres. E o `INSERT OR IGNORE` da linha 314, na
-migração das ocorrências antigas.
+Troque os dois `INSERT OR IGNORE`, das linhas 314 e 658, por `ON CONFLICT (...)
+DO NOTHING`, que é a sintaxe do Postgres.
 
-### 2. O freio de força bruta para de bloquear
+Há a mesma corrida na idempotência por `uuid`. A linha 607 verifica se a ficha já
+existe e a 630 insere. Duas sincronizações do mesmo aparelho, que o `setInterval`
+da linha 596 do `app.js` e o evento de volta da rede podem disparar juntas,
+passam as duas pela verificação e a segunda bate em violação de chave. Use
+`INSERT ... ON CONFLICT (uuid) DO NOTHING` e trate a ficha como aceita de
+qualquer jeito.
 
-O `TENTATIVAS = {}` da linha 369 é um dicionário na memória do processo. Na
-Vercel cada instância tem a sua, e elas nascem e morrem o tempo todo. Quem tenta
-senha em sequência cai em instâncias diferentes e acha o contador zerado em cada
-uma. O teste que bloqueou na nona tentativa passaria a não bloquear nunca.
+### 3. O freio de força bruta para de bloquear
 
-Vai para uma tabela:
+O `TENTATIVAS = {}` da linha 369 é um dicionário na memória do processo. O
+comentário das linhas 367 e 368 é honesto sobre isso: "em memoria: o app tem 2-3
+usuarios e um so processo". Na Vercel cada instância tem a sua memória, e elas
+nascem e morrem o tempo todo. Quem tenta senha em sequência cai em instâncias
+diferentes e acha o contador zerado em cada uma. O teste que bloqueou na nona
+tentativa passaria a não bloquear nunca.
 
 ```sql
 CREATE TABLE IF NOT EXISTS tentativas_login (
@@ -116,28 +178,68 @@ CREATE TABLE IF NOT EXISTS tentativas_login (
 ```
 
 O `_bloqueado`, o `_registrar_falha` e o `TENTATIVAS.pop` da linha 408 passam a
-ler e escrever nela, com os mesmos 8 e os mesmos 15 minutos.
+usar a tabela, com os mesmos 8 e os mesmos 15 minutos.
 
 Junto disso, o `_origem()` da linha 375 devolve `request.remote_addr`, que na
 Vercel é o IP da borda da plataforma, não o do celular. Todo mundo dividiria o
-mesmo contador, e um bloqueio derrubaria o login de todos ao mesmo tempo. Leia o
-primeiro endereço de `X-Forwarded-For`, com `remote_addr` como reserva.
+mesmo contador, e um ataque bloquearia o login de todos os representantes ao
+mesmo tempo. Leia o primeiro endereço de `X-Forwarded-For`, com `remote_addr`
+como reserva. Se um dia alguma rota precisar do esquema ou da URL externa
+corretos, aí instale o `ProxyFix` do Werkzeug. Nenhuma rota de hoje precisa.
 
-### 3. A busca do painel para de achar
+### 4. `REAL` no Postgres perde metade da precisão
 
-O `LIKE` das linhas 559 e 779 ignora maiúscula no SQLite e não ignora no
-Postgres. A busca do painel do gestor simplesmente devolve vazio para quem
-digitar com outra caixa, e ninguém entende por quê. Use `ILIKE` nas duas.
+Esta é a única desta lista que corrompe dado sem volta.
+
+A linha 222 declara `vol_12m REAL`, e as linhas 267 a 269 declaram `lat`, `lon` e
+`precisao` como `REAL`. No SQLite, `REAL` é ponto flutuante de 8 bytes. No
+Postgres, `REAL` é `float4`, 4 bytes, uns 6 dígitos decimais.
+
+Copiar o DDL literal para o `setup_db.py` faz um cliente com R$ 1.234.567,89
+virar cerca de 1.234.568. A linha 861 soma isso sobre todos os clientes vencidos
+e o painel mostra como faturamento sem cobertura. O número sai errado e continua
+parecendo certo. Em coordenada de GPS, 6 dígitos significativos comem a precisão
+que o check-in existe para ter.
+
+Use `double precision` nas quatro colunas.
+
+### 5. A busca do painel para de achar
+
+O `LIKE` da linha 779 ignora maiúscula no SQLite e não ignora no Postgres. O
+gestor digita "vidros" e não acha "Vidros". Devolve zero fichas, sem erro. Use
+`ILIKE` ali.
+
+Deixe `LIKE` na linha 559. Aquele compara contra um prefixo que o próprio
+servidor gerou, sempre na mesma caixa, e `ILIKE` não mudaria resultado nenhum e
+impediria o índice de ser usado.
+
+### 6. A média da pesquisa vira texto no JSON
+
+As linhas 959 e 965 fazem `ROUND(AVG(exp_nota),1) media`. No Postgres, `AVG`
+sobre inteiro devolve `numeric`, e o psycopg entrega isso como `Decimal`. O Flask
+não estoura, ele converte para string. A média sai como `"8.5"` em vez de `8.5`.
+
+Na tela de hoje ninguém percebe, porque o `painel.js` só imprime o valor. Mas o
+tipo mudou no contrato da API, e a primeira conta que alguém fizer sobre esse
+campo no cliente vira concatenação de texto.
+
+Converta para `float` no Python antes do `jsonify`. O mesmo cuidado vale se
+alguma coluna virar `numeric`: o `painel.js` chama `f.lat.toFixed(5)` na linha
+144, e string não tem `toFixed`, então a lista de fichas ficaria vazia com erro
+só no console.
 
 ## Arquivos novos
 
 ### `requirements.txt`
 
+Fixe as versões. Um build daqui a seis meses pega uma major diferente e você
+descobre em produção.
+
 ```
-flask
-psycopg[binary]
-requests
-python-dotenv
+flask==3.1.*
+psycopg[binary]==3.2.*
+requests==2.32.*
+python-dotenv==1.0.*
 ```
 
 ### `vercel.json`
@@ -155,42 +257,47 @@ from app import app
 ```
 
 A Vercel procura uma variável WSGI chamada `app` nesse arquivo. O rewrite manda
-toda rota para lá, inclusive `/static/...` e `/sw.js`. Cada arquivo estático vira
-uma invocação de função, o que é desperdício em geral e irrelevante com 3
-usuários. Não otimize agora.
+toda rota para lá, inclusive `/static/...` e `/sw.js`.
+
+Confira que a pasta `static/` entra no pacote da função. Se não entrar,
+`/static/app.js` dá 404 e o app abre em branco, e o registro do service worker na
+linha 598 do `app.js` engole o erro com um `catch` vazio. Pior: um celular que já
+tem o app instalado continua servindo do cache e parece funcionar, enquanto um
+aparelho novo abre em branco. Use `includeFiles` no `vercel.json`, ou sirva
+`static/` fora da função.
 
 O `/sw.js` continua servido na raiz do site, não em `/static/sw.js`. A rota da
 linha 440 já faz isso e segue funcionando pelo rewrite. Service worker servido de
 dentro de `/static/` perde escopo, e o offline para de valer no resto do app.
 
+### `.vercelignore`
+
+Ponha `gerar_pdf.py`, `docs/`, os `.md` e a pasta `dados/`. O `gerar_pdf.py`
+aponta para o Chrome do Mac numa linha fixa e não é importado pelo app, então só
+engorda o pacote.
+
 ### `setup_db.py`
 
 Roda uma vez, do Mac, contra o Neon. Cria as quatro tabelas do `SCHEMA`, as duas
-novas deste documento, as colunas de `COLUNAS_EXTRA` e os cinco índices. É o
-`init_db()` das linhas 297 a 334 convertido para Postgres.
+deste documento, as nove colunas de `COLUNAS_EXTRA` e os cinco índices. É o
+`init_db()` das linhas 297 a 334 convertido.
 
-Não deixe criação de tabela rodando a cada requisição. É lento na partida a frio,
-e duas instâncias subindo juntas brigam pelo mesmo `CREATE`.
+Não deixe criação de tabela rodando a cada requisição. No Postgres, DDL toma
+trava exclusiva, e duas instâncias frias subindo juntas se travam. O
+`CREATE INDEX` sem `CONCURRENTLY` ainda bloqueia escrita.
 
-Dentro dele, três trechos não se convertem direto:
-
-O `PRAGMA table_info` da linha 304 vira `ALTER TABLE ... ADD COLUMN IF NOT
-EXISTS`, que o Postgres tem nativo. Some o laço de conferência inteiro, e some
-com ele o `row[1]` da linha 305.
-
-O `fetchone()[0]` da linha 312 indexa por posição. Dê um apelido à contagem e
-leia por nome.
-
-A migração das ocorrências antigas, das linhas 313 a 324, só faz sentido se
-houver dado antigo em SQLite para trazer. Se o banco do Neon nasce vazio, não
-copie esse bloco.
+Três trechos não se convertem direto. O `PRAGMA table_info` da linha 304 vira
+`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, que o Postgres tem nativo, e some com
+ele o `row[1]` da linha 305. O `fetchone()[0]` da linha 312 indexa por posição,
+então dê apelido à contagem. E o backfill das linhas 313 a 324 só faz sentido se
+houver dado antigo em SQLite para trazer. Banco novo e vazio no Neon dispensa o
+bloco inteiro, que aliás tem a mesma corrida do item 2 acima.
 
 ## Mudanças no `app.py`
 
 ### Escritas em disco durante a importação
 
-Apague o `os.makedirs(FOTOS_DIR, exist_ok=True)` da linha 31. Não há mais pasta
-de fotos local.
+Apague o `os.makedirs(FOTOS_DIR, exist_ok=True)` da linha 31.
 
 O `.env` não se carrega sozinho. O Flask não lê arquivo `.env`, e o `app.py` só
 consulta `os.environ`. Para o teste local funcionar, acrescente no topo, antes de
@@ -215,12 +322,19 @@ def _secret_key():
     return chave
 ```
 
-O plano B de hoje gera uma chave nova quando não acha o arquivo. Na Vercel isso
-seria pior do que quebrar: cada instância geraria a sua, e o usuário cairia para
-a tela de login sem explicação toda vez que trocasse de instância. Falhar alto é
+O plano B de hoje gera uma chave nova quando não acha o arquivo. Se alguém
+"consertar" a escrita apontando para `/tmp`, cada instância passa a ter a sua
+chave, e o cookie assinado por uma é rejeitado por outra. O usuário cai na tela
+de login em requisições aleatórias e vai achar que errou a senha. Falhar alto é
 melhor.
 
-Apague a chamada `init_db()` da linha 1106.
+Apague a chamada `init_db()` da linha 1118. Junto dela, ou apague as constantes
+`SCHEMA`, linhas 202 a 278, e `COLUNAS_EXTRA`, linhas 281 a 294, ou ponha um
+comentário grande na linha 202 dizendo que o esquema real mora no `setup_db.py`.
+Deixadas como estão, elas viram documentação mentirosa, e a próxima coluna nova
+vai ser acrescentada no arquivo errado e não vai aplicar.
+
+Some também o `import sqlite3` da linha 16.
 
 ### Conexão com o Postgres
 
@@ -230,127 +344,244 @@ from psycopg.rows import dict_row
 
 def get_db():
     if "db" not in g:
-        g.db = psycopg.connect(os.environ["DATABASE_URL"], row_factory=dict_row)
+        g.db = psycopg.connect(os.environ["DATABASE_URL"],
+                               row_factory=dict_row, autocommit=True)
     return g.db
 ```
 
 Use a URL com `-pooler` no nome do host, que é o endpoint agrupado do Neon. Sem
-ele cada requisição abre conexão nova com handshake TLS inteiro, e isso aparece
-como lentidão na abertura do app.
+ele, cada requisição abre conexão nova no Postgres com handshake TLS inteiro, e o
+rewrite manda até `/static/styles.css` pela função. Sob qualquer concorrência
+isso estoura o limite de conexões, e o sintoma é 500 só quando duas pessoas usam
+ao mesmo tempo.
 
-O `PRAGMA foreign_keys = ON` da linha 191 sai. O Postgres sempre respeita chave
-estrangeira.
+O `autocommit=True` importa porque nenhuma rota de leitura chama `commit` nem
+`rollback`. O `sqlite3` não liga. O psycopg abre transação implícita no primeiro
+`execute` e a conexão fica ociosa dentro de transação até o `close_db` da linha
+195, o que segura conexão do pooler à toa. Nas rotas de escrita, abra transação
+explícita em volta do bloco que precisa ser tudo ou nada.
+
+O pooler do Neon é PgBouncer em modo transação. O psycopg 3 prepara consultas
+automaticamente depois de 5 execuções, e conforme a versão do PgBouncer isso dá
+erro intermitente de prepared statement duplicado, que aparece sob carga e some
+quando você vai olhar. Se acontecer, abra a conexão com `prepare_threshold=None`.
+
+O `PRAGMA foreign_keys = ON` da linha 191 sai. É código morto de qualquer jeito,
+porque nenhuma tabela do esquema declara chave estrangeira.
 
 ### Conversão do SQL
 
-**Todo `?` de SQL vira `%s`.** São 98 no arquivo, incluindo os de dentro dos
-`filtros.append(...)`.
+**Todo `?` de SQL vira `%s`.** São 98 no arquivo.
 
-Não faça busca e troca cega. O arquivo tem 110 sinais de interrogação, e 12 deles
-não são placeholder. Sete estão no texto das perguntas da pesquisa, nas linhas 93
-a 120, e virariam `recomendaria%s` na tela do cliente. Um está na linha 375, no
-`return request.remote_addr or "?"`, que é o valor de reserva da chave do
-bloqueio, não SQL. O da linha 821 monta os placeholders da cobertura e some junto
-com o `marcadores`, na troca por `ANY`. Converta consulta por consulta.
+Não faça busca e troca cega. O arquivo tem 110 sinais de interrogação, e 12 não
+são placeholder. Sete estão no texto das perguntas da pesquisa, linhas 93 a 120,
+e virariam `recomendaria%s` na tela do cliente. Um está na linha 375, no
+`return request.remote_addr or "?"`. O da linha 821 monta os placeholders da
+cobertura, e some na troca por `ANY`. Converta consulta por consulta.
 
-**Formatação de string com `%` colide com o placeholder.** Depois da troca acima,
-um `"SELECT ... %s ..." % onde` tenta substituir o placeholder junto com a parte
-estrutural, e o SQL sai quebrado. Vale para as linhas 775, 780, 785, 830 e 875.
-Passe todas para f-string.
+**Formatação de string com `%` colide com o placeholder.** Depois da troca, um
+`"%s = ?" % campo` vira `"%s = %s" % campo` e o Python levanta `TypeError` antes
+de tocar no banco. Vale para as linhas 775, 785, 830 e 875, mais a 308 que some
+com o `setup_db.py`. Passe todas para f-string.
 
-**A cláusula `IN` da cobertura fica melhor com `ANY`.** Em vez de montar
-`marcadores` e interpolar na linha 830, escreva `c.curva = ANY(%s)` e passe a
-lista `curvas` como um parâmetro só.
+**A cláusula `IN` da cobertura fica melhor com `ANY`.** A linha 821 faz
+`",".join("?" * len(curvas))`, que funciona por acidente, porque o `join` itera
+os caracteres da string e `"?" * 3` dá três caracteres. Com `%s` o mesmo código
+produz `%,s,%,s,%,s`, que é SQL inválido, não erro de Python. Escreva
+`c.curva = ANY(%s)` e passe a lista `curvas` como um parâmetro só.
 
-**Cinco lugares indexam resultado por posição** e quebram com `dict_row`, que
-devolve dicionário. São as linhas 562 e 564 no gerador de ocorrência, 801, 803 e
-805 nas opções do painel, e 893 e 899 nas contagens de ocorrência por status e
-por canal. Dê apelido a cada coluna, por exemplo `SELECT DISTINCT
-substr(recebido_em,1,7) AS mes`, e leia por nome.
+**Nove lugares indexam resultado por posição** e quebram com `dict_row`, que só
+aceita nome. No `app.py` são as linhas 312, 562, 564, 801, 803, 805, 893 e 899.
+No `importar_carteira.py` são as linhas 134, 152, 160 e 163, incluindo dois
+desempacotamentos de tupla. Dê apelido a cada coluna, por exemplo
+`SELECT DISTINCT substr(recebido_em,1,7) AS mes`, e leia por nome.
 
 **`INTEGER PRIMARY KEY AUTOINCREMENT` vira `GENERATED ALWAYS AS IDENTITY`.** Só
 na tabela `usuarios`, linha 205.
 
+**`REAL` vira `double precision`** nas linhas 222, 267, 268 e 269, pelo motivo do
+silêncio 4.
+
+**`int()` sem guarda em parâmetro de URL.** As linhas 681 e 783 fazem
+`int(request.args.get("limite", ...))`. Um `?limite=abc` dá 500. Vale hoje e
+depois, e é uma linha para consertar.
+
 O `substr(recebido_em,1,7)` das linhas 700, 769, 802 e 954 funciona igual no
 Postgres. Não mexa.
 
-Deixe as datas como texto ISO, do jeito que estão. Converter para `timestamptz`
-obrigaria a reescrever junto o filtro por mês e o `datetime.fromisoformat` da
-cobertura, sem ganho nenhum agora. Os campos `prospect`, `ativo`,
-`conta_indicador` e `relato_curto` também seguem como inteiros 0 e 1. Menos
-mudança, menos erro.
+Deixe as datas como texto ISO. Converter para `timestamptz` obrigaria a
+reescrever junto o filtro por mês e os dois `datetime.fromisoformat`, das linhas
+839 e 887, que passariam a receber objeto em vez de texto. Pior: a linha 840 só
+captura `ValueError`, então a cobertura devolveria 500, enquanto a linha 888
+captura também `TypeError` e falharia calada, deixando `dias_aberta` em nulo. Aí
+o cartão "abertas há mais de 7 dias" do painel mostra zero para sempre e nenhuma
+ocorrência ganha selo de atrasada. O indicador que existe para cobrar prazo
+passaria a dizer que está tudo em dia.
+
+Pelo mesmo motivo, os campos `prospect`, `ativo`, `conta_indicador` e
+`relato_curto` seguem inteiros 0 e 1, e `prox_data` e `prazo` seguem TEXT. O
+`_texto` das linhas 534 a 539 devolve string vazia, não nulo, quando o campo
+chega vazio do celular, e string vazia contra coluna `date` no Postgres é erro.
+
+A ordenação de texto muda com a collation. O SQLite compara byte a byte e põe
+"Ávila" depois de "Zebra", o Postgres põe antes. Muda a ordem da lista de
+clientes da linha 464, dos municípios da 804 e dos usuários da 1047. Não quebra
+nada, o gestor só vê a lista em outra ordem. No `importar_carteira.py`, linha
+150, o `ORDER BY curva` com curva nula troca a linha "sem dado" do topo para o
+rodapé, porque os dois bancos ordenam nulo em pontas opostas.
 
 ### Fotos
 
 A `_salvar_foto` da linha 502 guarda no Vercel Blob em vez do disco. Mantenha,
-sem tocar, a validação de `RE_UUID`, o teto de 6 MB e a checagem de assinatura
-binária. Só a escrita da linha 529 muda. O `foto_arquivo` no banco passa a
-guardar o caminho no Blob, tanto na tabela `fichas` quanto na `ocorrencias`.
+sem tocar, a validação de `RE_UUID`, o teto de 6 MB da linha 517 e a checagem de
+assinatura binária. Só a escrita da linha 529 muda. O `foto_arquivo` passa a
+guardar o caminho no Blob, nas tabelas `fichas` e `ocorrencias`.
 
-O SDK oficial do Blob é em JavaScript. Em Python, use a API HTTP direto com
-`requests`, mandando um PUT para `https://blob.vercel-storage.com/<caminho>` com
-o cabeçalho `Authorization: Bearer $BLOB_READ_WRITE_TOKEN`. Confira o formato
-atual na documentação da Vercel antes de escrever, porque essa API já mudou de
-versão. Existe um pacote `vercel_blob` no PyPI que embrulha isso, mas é de
-comunidade, então leia antes de confiar.
+O SDK oficial do Blob é em JavaScript. Em Python, use a API HTTP com `requests`,
+mandando um PUT para `https://blob.vercel-storage.com/<caminho>` com o cabeçalho
+`Authorization: Bearer $BLOB_READ_WRITE_TOKEN`. Confira o formato atual na
+documentação da Vercel, porque essa API já mudou de versão. Existe um pacote
+`vercel_blob` no PyPI que embrulha isso, mas é de comunidade.
 
-A rota `/foto/<nome>` da linha 1089 continua com `@login_obrigatorio` e passa a
-buscar do Blob e devolver o conteúdo. Não troque por redirecionamento para a URL
-pública. São fotos de cliente com coordenada de GPS junto, e URL pública é
-pública mesmo que ninguém adivinhe o endereço.
+Antes de escrever, confirme uma coisa: se o Blob da conta só oferece o modo
+público, ele não serve para este caso. São fotos de cliente com coordenada de GPS
+na mesma ficha, e URL pública é pública mesmo que ninguém adivinhe o endereço.
+Nesse caso o bucket S3 com URL assinada deixa de ser plano B e vira o caminho.
 
-Se a API do Blob em Python der trabalho demais, o plano B é um bucket S3 pelo
-`boto3`, caminho batido em Python. Guardar foto como `bytea` no Neon não serve:
-pela conta no fim deste documento, o volume enche a franquia do banco em uns três
-meses.
+A rota `/foto/<nome>` da linha 1101 continua com `@login_obrigatorio` e passa a
+buscar do Blob e devolver o conteúdo, sem redirecionar para URL pública. Enquanto
+ela não for migrada, o `painel.js` renderiza imagem quebrada nas linhas 171 e
+232, e nenhuma das duas tem tratamento de erro, então a foto some da tela sem
+aviso.
+
+Guardar foto como `bytea` no Neon não serve. Pela conta no fim deste documento, o
+volume enche a franquia do banco em uns três meses.
 
 ### Tamanho do lote de sincronização
 
 O `static/app.js` manda 10 fichas por vez na linha 404, com a foto em base64
 dentro do JSON. A foto sai em 1280px e qualidade 0,7, uns 250 KB, e o base64
-infla isso em um terço. Dez fichas com foto chegam perto de 4 MB, e o limite de
-corpo de requisição da Vercel é 4,5 MB.
+infla um terço. Dez fichas com foto chegam perto de 4 MB, e o limite de corpo de
+requisição da Vercel é 4,5 MB.
 
-Baixe o lote para 3 na linha 404, e ajuste o `payload["fichas"][:50]` da linha 594
+Baixe o lote para 3 na linha 404 e ajuste o `payload["fichas"][:50]` da linha 594
 para o mesmo número. A fila offline continua igual, só manda em mais viagens.
 
-No mesmo movimento, baixe o `MAX_CONTENT_LENGTH` da linha 162 de 12 MB para 4 MB.
-Hoje ele está acima do limite da plataforma, então nunca dispara, e o usuário
-receberia um erro opaco da Vercel em vez da recusa limpa do app.
-
-Confira o limite de duração de função da conta. Três fotos subindo para o Blob
-uma depois da outra levam alguns segundos.
+Baixe o `MAX_CONTENT_LENGTH` da linha 162 de 12 MB para 4 MB. Hoje ele está acima
+do limite da plataforma, então nunca dispara, e quem recusa é a borda da Vercel,
+com um 413 que o Flask nem vê. O teto de 6 MB por foto da linha 517 também está
+acima do limite de requisição, sozinho.
 
 ### Cache do service worker
 
-O `static/sw.js` guarda o app com a chave `rep-campo-v1` na linha 2. Depois de
-publicar, o celular que já tem o app instalado continua servindo a versão antiga
-do cache. Suba para `rep-campo-v2` no mesmo commit da migração, senão você vai
-testar a versão velha achando que é a nova.
+O `static/sw.js` guarda o app com a chave `rep-campo-v1` na linha 2, e os
+arquivos do shell não têm hash no nome. Suba para `rep-campo-v2` no mesmo commit
+da migração, senão o celular que já tem o app instalado continua servindo a
+versão antiga e você testa a velha achando que é a nova.
 
-## Sobre a v2 que você acabou de publicar
+## Limites da plataforma
 
-A gestão de usuários das linhas 1031 a 1088 cria e edita usuário pelo próprio
-app. Depois da migração, o `criar_usuario.py` serve só para criar o primeiro
-gestor no banco vazio. Todo o resto passa pela tela.
+**Tamanho da resposta.** A rota `/api/gestor/cobertura`, linhas 822 a 862,
+devolve todos os clientes de curva A e B sem `LIMIT`, e o painel só corta em 400
+na hora de desenhar. A `/api/bootstrap`, linha 462, devolve a carteira ativa
+inteira em toda abertura do app. A `/api/gestor/fichas` com `limite=500` e
+`relato` de até 5.000 caracteres pode passar de 2 MB só de texto. Se a resposta
+for cortada, o `r.json()` do painel levanta e a tela fica em branco, sem
+mensagem, e o botão de baixar CSV exporta só o que chegou. Ponha `LIMIT` no
+servidor e paginação, ou pelo menos meça o tamanho real com a carteira do Ricardo
+antes de publicar.
 
-A troca de senha em `/conta`, linha 996, e a criação de usuário na linha 1040 são
-escritas comuns no Postgres. Nada de especial nelas além do `?` virando `%s`.
+**Duração da função.** Por ficha, o `api_receber_fichas` decodifica base64,
+manda a foto para o Blob e faz dois `INSERT`, tudo em série com ida e volta de
+rede a cada instrução. Some o cold start da Vercel e a conexão nova ao Neon. Com
+a fila cheia, o teto da conta gratuita é alcançável, e o timeout devolve 504 que
+o cliente engole.
 
-O `INSERT OR IGNORE` da linha 658 já está coberto na seção do número da
-ocorrência. É o mesmo conserto.
+**Suspensão do Neon.** A franquia gratuita desliga o compute depois de alguns
+minutos parado. A primeira consulta da manhã paga o tempo de acordar o banco em
+cima do cold start. Meça isso antes de escolher o timeout da função.
+
+## Segurança
+
+**A rota `/saude` passa a vazar dado de infraestrutura.** As linhas 1109 a 1115
+não exigem login e, no `except`, devolvem `str(exc)` para quem pedir. Hoje isso
+mostra um caminho de arquivo local. Depois da migração, uma exceção do psycopg
+carrega host, porta, nome do banco e às vezes o usuário do Neon, no corpo de uma
+resposta pública na internet. Devolva `{"ok": false}` e mande o detalhe para o
+log. É a única regressão de segurança que a migração cria por si.
+
+**Desativar usuário não desloga ninguém.** A autorização lê `session.get("papel")`,
+gravado no cookie no login, e o `ativo` só é conferido na linha 405, no login. Um
+gestor rebaixado continua gestor por até 7 dias, e um usuário desativado continua
+entrando. Já era assim. Muda que o único jeito de forçar logout geral passa a ser
+girar `REP_SECRET_KEY` no painel da Vercel, o que derruba todo mundo junto. Como
+a rota já abre conexão de qualquer forma, vale conferir `ativo` e `papel` no
+banco dentro do decorador.
+
+**Cuidado com cabeçalho de cache.** O `vercel.json` manda `/(.*)` para a função.
+Basta alguém acrescentar uma regra de `headers` com `s-maxage` casando esse mesmo
+padrão para o `/api/bootstrap` de um usuário ser servido a outro pela CDN. Se for
+mexer em cache, exclua `/api/` explicitamente.
+
+**Confira a lista de variáveis do projeto.** Se o `REP_INSECURE_COOKIE` do teste
+local for copiado para a Vercel com valor `1`, o cookie de sessão deixa de exigir
+HTTPS.
+
+## Bugs que já existem, e a migração não cria
+
+Nenhum destes é culpa da mudança. Ficam registrados porque quem for mexer no
+código vai passar por eles.
+
+**A nota da pesquisa nunca é exigida.** No `static/app.js`, o `return` da linha
+330 acontece quando há erros, e a validação que empurra "Dê a nota da experiência
+do cliente" está na linha 337, depois dele. Nada mais lê a lista de erros. A
+ficha salva sem nota e o representante nunca vê o aviso. A pesquisa de
+experiência, que é a novidade da v2, é opcional na prática.
+
+**A aba de experiência zera se ganhar filtro de mês.** Nas linhas 963 e 969, a
+ordem dos parâmetros no texto do SQL é corte, detrator, mês, métrica, e a ordem
+fornecida é corte, detrator, métrica, mês. Com o mês preenchido, o banco compara
+o mês contra a métrica e devolve zero linhas, sem erro. Hoje não aparece porque o
+painel nunca manda o mês. No dia em que alguém puser esse filtro, NPS, CSAT e CES
+aparecem zerados e ninguém acha a causa.
+
+**Trocar de usuário no mesmo aparelho troca o dono da ficha.** O `logout` limpa a
+sessão do servidor e não limpa o IndexedDB nem a Cache API. O usuário B vê as
+fichas de A em "Minhas fichas", e o sincronizador dispara sozinho a cada 60
+segundos e manda as fichas de A com a sessão de B, porque a linha 640 tira o
+autor da sessão e não da ficha. O painel do gestor mostra o representante errado.
+Limpe o IndexedDB e a Cache API no logout.
+
+**O service worker pode nunca instalar.** O `sw.js` põe `/` na lista do shell, e
+`/` para quem não está logado responde com redirecionamento. O `addAll` rejeita
+em resposta não-ok e o install falha inteiro.
+
+**`extra_json` é cortado no meio.** A linha 648 corta em 20.000 bytes sem olhar
+onde, e a leitura cai no `except` e devolve `{}`. O gestor perde o bloco de
+detalhes do tipo de visita. Corte os campos antes de serializar, não o JSON
+pronto.
+
+**As regras de negócio só existem no cliente.** O `app.js` valida cliente,
+município, objetivo, próximo passo e foto obrigatória. O servidor só exige
+`uuid`, `tipo` e `cliente_nome`. Um POST montado à mão passa por cima de tudo.
+
+**O filtro mensal usa UTC.** Uma ficha registrada às 21h30 de 31/08 em Imperatriz
+é 00h30 de 01/09 em UTC e cai no mês seguinte.
 
 ## Scripts que continuam rodando no Mac
 
 O `importar_carteira.py` e o `criar_usuario.py` continuam no Mac, porque a
-carteira em CSV mora no Google Drive. Os dois trocam `sqlite3` por `psycopg` e
-`?` por `%s`, e passam a ler `DATABASE_URL` em vez de `REP_DB`. A lógica da curva
-ABC e da migração de municípios não muda em nada.
+carteira em CSV mora no Google Drive. Trocam `sqlite3` por `psycopg` e `?` por
+`%s`, passam a ler `DATABASE_URL`, e precisam das quatro correções de indexação
+por posição já citadas. O `ON CONFLICT ... DO UPDATE` que os dois já usam é
+sintaxe do Postgres e passa direto.
+
+Depois da migração, o `criar_usuario.py` serve só para criar o primeiro gestor no
+banco vazio. Todo o resto passa pela tela, uma vez consertado o `SENHA_MIN`.
 
 O `rodar_local.sh` continua útil. Aponte para uma branch do Neon, não para o
 banco de produção, senão um teste no Mac escreve ficha de mentira no banco real.
-O Neon cria branch de banco em segundos e a franquia gratuita inclui isso. É o
-melhor uso da ferramenta neste projeto.
+O Neon cria branch de banco em segundos e a franquia gratuita inclui isso.
 
 ## Documentos que ficam errados
 
@@ -364,34 +595,49 @@ Vale uma nota no topo dizendo o que mudou e em que data.
 
 ## Ordem de execução
 
-1. Confirme que `.env` está no `.gitignore`.
-2. Crie `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN` e `REP_SECRET_KEY` nas variáveis
+1. Conserte o tratamento de erro do `sincronizar()` no `static/app.js`.
+2. Confirme que `.env` está no `.gitignore`.
+3. Crie `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN` e `REP_SECRET_KEY` nas variáveis
    de ambiente do projeto na Vercel. As três, não duas. Um `.env` no Mac não
    chega na Vercel. Chave de administração da conta do Neon não entra nessa
-   lista: o app não usa, e guardá-la junto só aumenta o estrago se o arquivo
-   vazar.
-3. Escreva o `setup_db.py` e rode do Mac. Confira as seis tabelas no Neon.
-4. Converta o `app.py`, seguindo as seções acima na ordem em que aparecem.
-5. Adicione `requirements.txt`, `vercel.json` e `api/index.py`.
-6. Ajuste o lote e o `MAX_CONTENT_LENGTH`.
-7. Suba a versão do cache no `static/sw.js`.
-8. Converta `criar_usuario.py` e `importar_carteira.py`, rode os dois do Mac para
-   criar o primeiro gestor e carregar a carteira.
-9. Publique e teste.
+   lista, porque o app não usa e guardá-la junto só aumenta o estrago se o
+   arquivo vazar.
+4. Escreva o `setup_db.py`, com `double precision` no lugar de `REAL`, e rode do
+   Mac. Confira as seis tabelas no Neon.
+5. Converta o `app.py`, seguindo as seções acima na ordem em que aparecem.
+6. Adicione `requirements.txt`, `vercel.json`, `api/index.py` e `.vercelignore`.
+7. Ajuste o lote e o `MAX_CONTENT_LENGTH`.
+8. Suba a versão do cache no `static/sw.js`.
+9. Converta `criar_usuario.py` e `importar_carteira.py`, e rode os dois do Mac
+   para criar o primeiro gestor e carregar a carteira.
+10. Publique e teste.
 
 ## Como verificar que deu certo
 
-Abra `/saude` na URL da Vercel. Tem que responder com a contagem de clientes
-importados. Se der erro, o banco não conectou e nada mais adianta testar.
+Abra `/saude`. Tem que responder com a contagem de clientes importados. Se der
+erro, o banco não conectou e nada mais adianta testar.
 
-Depois, os quatro ataques de 01/09, agora contra a URL nova. O de força bruta é o
-que mais importa. Erre a senha nove vezes seguidas e confira que a nona devolve
-429. Se a nona passar, o contador ainda está na memória.
+Troque a própria senha em `/conta`, crie um usuário e redefina a senha dele. São
+as três telas que o commit `d86b0f9` acabou de consertar, e o port passa por
+elas.
 
-Para o número da ocorrência, o teste é registrar duas visitas técnicas de
-clientes diferentes e sincronizar as duas juntas. Os dois números têm que ser
-diferentes, e as duas ocorrências têm que aparecer no painel. Se aparecer uma só,
-o contador ainda tem a corrida da seção 1.
+Erre a senha nove vezes seguidas. A nona tem que devolver 429. Se passar, o
+contador ainda está na memória.
+
+Registre duas visitas técnicas de clientes diferentes e sincronize as duas
+juntas. Os dois números de ocorrência têm que ser diferentes, e as duas
+ocorrências têm que aparecer no painel. Se aparecer uma só, o contador ainda tem
+a corrida.
+
+Mande um lote com uma ficha inválida no meio. As outras têm que entrar, e a
+inválida tem que voltar na lista de rejeitadas com motivo na tela. Se a fila
+inteira ficar parada, o tratamento de transação por ficha não está lá.
+
+Busque no painel por um nome em minúsculas que está gravado com maiúscula. Tem
+que achar.
+
+Confira no painel um cliente de volume alto. O valor precisa bater com o CSV até
+os centavos. Se arredondou, a coluna ficou `REAL`.
 
 Por último, no celular de verdade: instalar na tela inicial, registrar uma visita
 com foto e GPS no modo avião, voltar para a rede e ver a ficha subir. É esse
@@ -402,7 +648,7 @@ impedia.
 
 Três usuários, umas 30 fichas por dia no pior caso, foto de 250 KB. Dá 7,5 MB por
 dia e uns 150 MB por mês de dias úteis. É por isso que a foto não cabe no banco,
-e é o número para comparar com a franquia do Blob quando ela for conferida.
+e é o número para comparar com a franquia do Blob.
 
 ## Quem decide o quê
 
