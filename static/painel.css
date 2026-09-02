@@ -173,3 +173,7 @@ tbody tr.nunca{background:#fdecea}
 .chip .tira:hover{opacity:1}
 .linha-avulsa{display:flex;gap:8px;align-items:center;margin-top:5px}
 .linha-avulsa input{margin-top:0}
+.relatorio{background:#fff;border:1px solid var(--borda);border-radius:var(--raio);padding:16px;margin-top:12px}
+.relatorio h3{margin-top:0}
+@media print{ .topo,.abas,.barra-filtros,.btn-sec,.ficha-cab{display:none!important}
+  .relatorio{border:0;padding:0} }

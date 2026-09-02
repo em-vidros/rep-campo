@@ -184,7 +184,17 @@ INDICES = [
     "CREATE INDEX IF NOT EXISTS ix_fichas_usuario ON fichas(usuario_login)",
     "CREATE INDEX IF NOT EXISTS ix_fichas_data ON fichas(recebido_em)",
     "CREATE INDEX IF NOT EXISTS ix_fichas_cliente ON fichas(cliente_codigo)",
+    "CREATE INDEX IF NOT EXISTS ix_fichas_viagem ON fichas(viagem_id)",
     "CREATE INDEX IF NOT EXISTS ix_clientes_nome ON clientes(nome)",
+]
+
+
+# Colunas acrescentadas depois da primeira versao. ADD COLUMN IF NOT EXISTS e
+# idempotente no Postgres, entao roda junto com o resto sem quebrar.
+COLUNAS = [
+    # a ficha guarda de qual viagem ela veio; NULL = visita avulsa, tipica da
+    # cidade onde o representante mora, que nao precisa de plano de rota
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS viagem_id INTEGER",
 ]
 
 
@@ -212,6 +222,9 @@ def main():
         for nome, ddl in TABELAS:
             con.execute(ddl)
             print("tabela", nome)
+        for ddl in COLUNAS:
+            con.execute(ddl)
+        print(len(COLUNAS), "coluna(s) conferida(s)")
         for ddl in INDICES:
             con.execute(ddl)
         print(len(INDICES), "indices")

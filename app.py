@@ -822,13 +822,20 @@ def api_receber_fichas():
                     # so no roteiro de quem registrou a visita. Sem o filtro por
                     # dono, a visita de um marcava o cliente como visitado na
                     # viagem aberta de todos os outros representantes.
-                    db.execute("""
+                    achou = db.execute("""
                         UPDATE viagem_clientes SET visitado = 1, ficha_uuid = %s, visitado_em = %s
                          WHERE visitado = 0 AND cliente_codigo = %s AND viagem_id IN (
                                SELECT id FROM viagens
                                 WHERE status IN ('planejada','em_andamento')
                                   AND (criada_por = %s OR responsavel = %s))
-                    """, (uuid_f, _agora(), cod, session["login"], session["login"]))
+                     RETURNING viagem_id
+                    """, (uuid_f, _agora(), cod, session["login"], session["login"])).fetchone()
+                    # ficha sem viagem e visita avulsa - tipicamente na cidade
+                    # onde o representante mora, que nao precisa de plano de rota
+                    if achou:
+                        # o cursor devolve dict, nao tupla
+                        db.execute("UPDATE fichas SET viagem_id = %s WHERE uuid = %s",
+                                   (achou["viagem_id"], uuid_f))
 
                 _salvar_anexos(uuid_f, ficha.get("anexos"), db)
         except Exception:
@@ -1522,6 +1529,103 @@ def api_viagem(vid):
     d["visitados"] = sum(1 for c in clientes if c["visitado"])
     d["aderencia"] = round(100.0 * d["visitados"] / d["planejados"]) if clientes else None
     return jsonify(d)
+
+
+@app.route("/api/viagens/<int:vid>/relatorio")
+@login_obrigatorio
+def api_viagem_relatorio(vid):
+    """Relatorio da viagem, montado do que as fichas registraram.
+
+    Nada e digitado duas vezes: o representante preenche a ficha em campo e o
+    relatorio sai pronto. O que ele acrescenta e so a leitura da viagem.
+    """
+    db = get_db()
+    v = db.execute("SELECT * FROM viagens WHERE id = %s", (vid,)).fetchone()
+    if not v:
+        return jsonify({"erro": "nao_encontrada"}), 404
+    v = dict(v)
+    if not eh_gestor() and v["criada_por"] != session["login"] \
+            and (v.get("responsavel") or "") != session["login"]:
+        return jsonify({"erro": "sem_permissao"}), 403
+
+    roteiro = [dict(r) for r in db.execute(
+        "SELECT * FROM viagem_clientes WHERE viagem_id = %s ORDER BY visitado, cliente_nome",
+        (vid,))]
+    fichas = [dict(r) for r in db.execute(
+        "SELECT uuid, tipo, cliente_nome, cliente_codigo, municipio, objetivo, relato, "
+        "proximo_passo, prox_responsavel, prox_data, encaminhado_para, problema_tipo, "
+        "ocorrencia_num, nivel_evidencia, conta_indicador, criado_em_disp, recebido_em "
+        "FROM fichas WHERE viagem_id = %s ORDER BY recebido_em", (vid,))]
+
+    uuids = [f["uuid"] for f in fichas]
+    respostas, ocorrencias = [], []
+    if uuids:
+        respostas = [dict(r) for r in db.execute(
+            "SELECT cliente_nome, etapa, metrica, nota, comentario, unidade "
+            "FROM experiencia WHERE ficha_uuid = ANY(%s) ORDER BY nota", (uuids,))]
+        ocorrencias = [dict(r) for r in db.execute(
+            "SELECT numero, cliente_nome, tipo, status, responsavel "
+            "FROM ocorrencias WHERE ficha_uuid = ANY(%s) ORDER BY numero", (uuids,))]
+
+    por_tipo, municipios = {}, {}
+    for f in fichas:
+        por_tipo[f["tipo"]] = por_tipo.get(f["tipo"], 0) + 1
+        if f["municipio"]:
+            municipios[f["municipio"]] = municipios.get(f["municipio"], 0) + 1
+
+    notas = [r["nota"] for r in respostas]
+    encaminhamentos = [f for f in fichas if (f.get("encaminhado_para") or "").strip()]
+    fora_do_roteiro = [f for f in fichas
+                       if f["cliente_codigo"] not in {c["cliente_codigo"] for c in roteiro}]
+
+    return jsonify({
+        "viagem": v,
+        "planejados": len(roteiro),
+        "visitados": sum(1 for c in roteiro if c["visitado"]),
+        "aderencia": (round(100.0 * sum(1 for c in roteiro if c["visitado"]) / len(roteiro))
+                      if roteiro else None),
+        "nao_visitados": [c for c in roteiro if not c["visitado"]],
+        "fichas": fichas,
+        "fora_do_roteiro": fora_do_roteiro,
+        "por_tipo": por_tipo,
+        "municipios": sorted(municipios.items(), key=lambda x: -x[1]),
+        "ocorrencias": ocorrencias,
+        "encaminhamentos": encaminhamentos,
+        "respostas": respostas,
+        "media_pesquisa": round(sum(notas) / len(notas), 1) if notas else None,
+        "clientes_ouvidos": len({r["cliente_nome"] for r in respostas}),
+    })
+
+
+@app.route("/api/visitas-avulsas")
+@login_obrigatorio
+def api_visitas_avulsas():
+    """Visitas sem viagem - a rotina da cidade onde o representante mora.
+
+    Nao precisam de plano de rota, mas contam igual: entram na cobertura da
+    carteira, abrem ocorrencia e coletam pesquisa como qualquer outra.
+    """
+    db = get_db()
+    mes = request.args.get("mes") or datetime.now(timezone.utc).strftime("%Y-%m")
+    filtros = ["viagem_id IS NULL", "substr(recebido_em,1,7) = %s"]
+    args = [mes]
+    if not eh_gestor():
+        filtros.append("usuario_login = %s")
+        args.append(session["login"])
+    onde = "WHERE " + " AND ".join(filtros)
+    fichas = [dict(r) for r in db.execute(
+        "SELECT uuid, tipo, cliente_nome, municipio, proximo_passo, usuario_login, "
+        "recebido_em FROM fichas " + onde + " ORDER BY recebido_em DESC LIMIT 300", args)]
+    por_municipio = {}
+    for f in fichas:
+        m = f["municipio"] or "sem município"
+        por_municipio[m] = por_municipio.get(m, 0) + 1
+    return jsonify({
+        "mes": mes, "total": len(fichas),
+        "clientes": len({f["cliente_nome"] for f in fichas}),
+        "por_municipio": sorted(por_municipio.items(), key=lambda x: -x[1]),
+        "fichas": fichas,
+    })
 
 
 @app.route("/api/viagens/<int:vid>/clientes", methods=["POST"])

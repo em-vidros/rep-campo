@@ -24,6 +24,7 @@
 <nav class="abas">
   <button class="aba ativa" data-tela="lista">Minhas viagens</button>
   <button class="aba" data-tela="planejar">Planejar nova</button>
+  <button class="aba" data-tela="avulsas">Visitas sem viagem</button>
 </nav>
 
 <main class="conteudo">
@@ -32,6 +33,16 @@
   <!-- ============ LISTA ============ -->
   <section id="tela-lista" class="tela ativa">
     <div id="lista-viagens" class="lista-gestor"></div>
+  </section>
+
+  <!-- ============ VISITAS AVULSAS ============ -->
+  <section id="tela-avulsas" class="tela">
+    <p class="explica">Visitas do dia a dia, sem viagem planejada — tipicamente na
+      cidade onde o representante mora. <b>Não precisam de plano de rota</b>, mas
+      contam igual: entram na cobertura da carteira, abrem ocorrência e coletam
+      pesquisa como qualquer outra.</p>
+    <div id="cartoes-avulsas" class="cartoes-larg"></div>
+    <div id="lista-avulsas" class="lista-gestor"></div>
   </section>
 
   <!-- ============ PLANEJAR ============ -->

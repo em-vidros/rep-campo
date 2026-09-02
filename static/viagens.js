@@ -235,11 +235,17 @@ async function carregarViagens() {
                 ${c.visitado ? ' · visitado em ' + dataBR(c.visitado_em) : ''}</div></div>
           </div>`).join('') || '<p class="explica">Sem clientes no roteiro.</p>'}
       </div>
+      <div class="bloco">
+        <button type="button" class="btn-sec" data-relatorio="${id}">Ver relatório da viagem</button>
+      </div>
+      <div id="relatorio-${id}"></div>
       <div class="bloco"><h4>Situação</h4>
         <select data-status="${id}">
           ${['planejada', 'em_andamento', 'concluida'].map(st =>
             `<option value="${st}"${st === v.status ? ' selected' : ''}>${st.replace('_', ' ')}</option>`).join('')}
         </select></div>`;
+    const btnRel = $('corpo-' + id).querySelector('[data-relatorio]');
+    if (btnRel) btnRel.onclick = () => verRelatorio(id, $('relatorio-' + id));
     $('corpo-' + id).querySelector('[data-status]').onchange = async ev => {
       await fetch('/api/viagens/' + id, { method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -251,3 +257,86 @@ async function carregarViagens() {
 
 carregarViagens();
 carregarRotas();
+
+
+/* ------------------------------------------------- relatorio da viagem */
+async function verRelatorio(id, alvo) {
+  const r = await fetch('/api/viagens/' + id + '/relatorio');
+  if (!r.ok) return msg('Não foi possível montar o relatório.', true);
+  const d = await r.json();
+  const v = d.viagem;
+  const linha = (rot, val) => `<div class="cc-linha"><span>${esc(rot)}</span><b>${val}</b></div>`;
+
+  alvo.innerHTML = `
+    <div class="relatorio">
+      <h3>Relatório — ${esc(v.nome)}</h3>
+      <p class="explica">${v.inicio ? dataBR(v.inicio) : 'sem data'}${v.fim ? ' a ' + dataBR(v.fim) : ''}
+        ${v.rota ? ' · rota ' + esc(v.rota) : ''} · ${esc(v.responsavel || v.criada_por)}</p>
+
+      <div class="cartoes-larg">
+        <div class="cartao"><div class="num">${d.visitados}/${d.planejados}</div>
+          <div class="rot">visitados${d.aderencia !== null ? ' · ' + d.aderencia + '%' : ''}</div></div>
+        <div class="cartao"><div class="num">${d.fichas.length}</div><div class="rot">fichas</div></div>
+        <div class="cartao"><div class="num ${d.ocorrencias.length ? 'num-alerta' : ''}">${d.ocorrencias.length}</div>
+          <div class="rot">ocorrências abertas</div></div>
+        <div class="cartao"><div class="num">${d.media_pesquisa === null ? '—' : d.media_pesquisa}</div>
+          <div class="rot">nota média · ${d.clientes_ouvidos} ouvido(s)</div></div>
+      </div>
+
+      ${Object.keys(d.por_tipo).length ? `<div class="bloco"><h4>Visitas por tipo</h4>
+        ${Object.entries(d.por_tipo).map(([t, n]) => linha(t, n)).join('')}</div>` : ''}
+
+      ${d.municipios.length ? `<div class="bloco"><h4>Municípios percorridos</h4>
+        ${d.municipios.map(([m, n]) => linha(m, n + ' visita(s)')).join('')}</div>` : ''}
+
+      ${d.ocorrencias.length ? `<div class="bloco"><h4>Ocorrências abertas na viagem</h4>
+        ${d.ocorrencias.map(o => `<div class="item-roteiro"><span class="marca-visita">!</span>
+          <div><b>${esc(o.numero)} · ${esc(o.cliente_nome)}</b>
+          <div class="sub">${esc(o.tipo || '—')} · ${esc(o.status)}${o.responsavel ? ' · ' + esc(o.responsavel) : ''}</div>
+          </div></div>`).join('')}</div>` : ''}
+
+      ${d.encaminhamentos.length ? `<div class="bloco"><h4>Encaminhados ao time</h4>
+        ${d.encaminhamentos.map(f => `<div class="item-roteiro"><span class="marca-visita">→</span>
+          <div><b>${esc(f.cliente_nome)}</b>
+          <div class="sub">para ${esc(f.encaminhado_para)} · ${esc(f.proximo_passo || '')}</div>
+          </div></div>`).join('')}</div>` : ''}
+
+      ${d.respostas.length ? `<div class="bloco"><h4>Pesquisa coletada</h4>
+        ${d.respostas.map(x => `<div class="cc-linha">
+          <span>${esc(x.etapa)}${x.unidade ? ' (' + esc(x.unidade) + ')' : ''}</span>
+          <b>${x.nota}</b></div>`).join('')}</div>` : ''}
+
+      ${d.fora_do_roteiro.length ? `<div class="bloco"><h4>Visitados fora do roteiro</h4>
+        ${d.fora_do_roteiro.map(f => `<div class="item-roteiro"><span class="marca-visita">+</span>
+          <div><b>${esc(f.cliente_nome)}</b><div class="sub">${esc(f.municipio || '')}</div></div>
+          </div>`).join('')}</div>` : ''}
+
+      ${d.nao_visitados.length ? `<div class="bloco"><h4>Não visitados</h4>
+        ${d.nao_visitados.map(c => `<div class="item-roteiro"><span class="marca-visita">○</span>
+          <div><b>${esc(c.cliente_nome)}</b><div class="sub">${esc(c.municipio || '')}${c.motivo ? ' · ' + esc(c.motivo) : ''}</div></div>
+          </div>`).join('')}</div>` : ''}
+
+      <button type="button" class="btn-sec" onclick="window.print()">Imprimir</button>
+    </div>`;
+}
+
+/* ------------------------------------------------- visitas sem viagem */
+async function carregarAvulsas() {
+  const r = await fetch('/api/visitas-avulsas');
+  if (!r.ok) return;
+  const d = await r.json();
+  $('cartoes-avulsas').innerHTML = `
+    <div class="cartao"><div class="num">${d.total}</div><div class="rot">visitas no mês</div></div>
+    <div class="cartao"><div class="num">${d.clientes}</div><div class="rot">clientes</div></div>
+    <div class="cartao"><div class="num">${d.por_municipio.length}</div><div class="rot">municípios</div></div>`;
+  $('lista-avulsas').innerHTML = (d.fichas.length ? `
+    <div class="ficha"><div class="ficha-corpo" style="display:block">
+      <div class="bloco"><h4>Por município</h4>
+        ${d.por_municipio.map(([m, n]) => `<div class="cc-linha"><span>${esc(m)}</span><b>${n}</b></div>`).join('')}</div>
+      <div class="bloco"><h4>Visitas</h4>
+        ${d.fichas.map(f => `<div class="item-roteiro"><span class="marca-visita">·</span>
+          <div><b>${esc(f.cliente_nome)}</b>
+          <div class="sub">${esc(f.tipo)} · ${esc(f.municipio || '—')} · ${dataBR(f.recebido_em)}
+          ${f.proximo_passo ? ' · ' + esc(f.proximo_passo) : ''}</div></div></div>`).join('')}</div>
+    </div></div>` : '<div class="vazio">Nenhuma visita avulsa neste mês.</div>');
+}
