@@ -143,3 +143,14 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 /* legenda da regua de 0 a 10 (o significado muda com a metrica) */
 .reguas{display:flex;justify-content:space-between;gap:10px;margin:2px 0 8px}
 .reguas span{font-size:.68rem;color:var(--cinza)}
+
+/* ---- botao de espiar a senha ---- */
+.campo-senha{position:relative;display:block}
+.campo-senha input{padding-right:46px;width:100%}
+.espiar{
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  border:0;background:none;font-size:1.05rem;line-height:1;
+  padding:8px;cursor:pointer;opacity:.65;border-radius:8px;
+}
+.espiar:hover,.espiar:focus{opacity:1;background:rgba(0,0,0,.05)}
+.espiar:focus-visible{outline:2px solid var(--verde-claro)}
