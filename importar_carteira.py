@@ -14,14 +14,25 @@ Uso:  python importar_carteira.py [--sem-migracao]
 import csv
 import json
 import os
-import sqlite3
+import psycopg
 import sys
 import re
 import unicodedata
 from datetime import datetime, timezone
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_PATH = os.environ.get("REP_DB", os.path.join(BASE_DIR, "dados", "rep_campo.db"))
+
+
+def carregar_env():
+    caminho = os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(caminho):
+        return
+    for linha in open(caminho, encoding="utf-8"):
+        linha = linha.strip()
+        if not linha or linha.startswith("#") or "=" not in linha:
+            continue
+        chave, valor = linha.split("=", 1)
+        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
 DADOS_CARTEIRA = os.path.abspath(os.path.join(BASE_DIR, "..", "gestao-carteira", "dados"))
 CSV_ITZ = os.path.join(DADOS_CARTEIRA, "carteira_itz_final.csv")
 JSON_RAP = os.path.join(DADOS_CARTEIRA, "carteira_rap_final.json")
@@ -128,7 +139,13 @@ def main():
     todos = curva_abc(itz + extra)
     agora = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
-    con = sqlite3.connect(DB_PATH)
+    carregar_env()
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        print("[--] DATABASE_URL nao definida. Ponha no .env do projeto.")
+        sys.exit(1)
+
+    con = psycopg.connect(url)
     cur = con.cursor()
     cur.execute("SELECT COUNT(*) FROM clientes")
     antes = cur.fetchone()[0]
@@ -136,7 +153,7 @@ def main():
         cur.execute("""
             INSERT INTO clientes (codigo, nome, cidade, rota, tabela, vendedor,
                                   vol_12m, curva, base, origem, ativo, atualizado_em)
-            VALUES (?,?,?,?,?,?,?,?,?,?,1,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
             ON CONFLICT(codigo) DO UPDATE SET
                 nome=excluded.nome, cidade=excluded.cidade, rota=excluded.rota,
                 tabela=excluded.tabela, vendedor=excluded.vendedor,
@@ -146,7 +163,7 @@ def main():
               c["vendedor"], c["vol_12m"], c["curva"], c["base"], c["origem"], agora))
     con.commit()
 
-    cur.execute("SELECT COALESCE(curva,'sem dado'), COUNT(*), ROUND(SUM(vol_12m)) "
+    cur.execute("SELECT COALESCE(curva,'sem dado'), COUNT(*), ROUND(SUM(vol_12m)::numeric) "
                 "FROM clientes GROUP BY curva ORDER BY curva")
     print("\n[resumo por curva]")
     for curva, qtd, vol in cur.fetchall():

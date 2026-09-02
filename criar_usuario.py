@@ -7,14 +7,25 @@ Uso:  python criar_usuario.py <login> "<Nome>" [rep|gestor]
 """
 import getpass
 import os
-import sqlite3
 import sys
 from datetime import datetime, timezone
 
+import psycopg
 from werkzeug.security import generate_password_hash
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-DB_PATH = os.environ.get("REP_DB", os.path.join(BASE_DIR, "dados", "rep_campo.db"))
+
+
+def carregar_env():
+    caminho = os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(caminho):
+        return
+    for linha in open(caminho, encoding="utf-8"):
+        linha = linha.strip()
+        if not linha or linha.startswith("#") or "=" not in linha:
+            continue
+        chave, valor = linha.split("=", 1)
+        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
 
 
 def main():
@@ -33,21 +44,25 @@ def main():
         print("[--] senha muito curta (minimo 8 caracteres)")
         sys.exit(1)
 
-    con = sqlite3.connect(DB_PATH)
+    carregar_env()
+    url = os.environ.get("DATABASE_URL")
+    if not url:
+        print("[--] DATABASE_URL nao definida. Ponha no .env do projeto.")
+        sys.exit(1)
+
     # pbkdf2 explicito: o default do Werkzeug 3 e scrypt, que nao existe em
     # builds do Python sem OpenSSL completo (caso do python do macOS).
     senha_hash = generate_password_hash(senha, method="pbkdf2:sha256")
 
-    con.execute("""
-        INSERT INTO usuarios (login, nome, senha_hash, papel, base, ativo, criado_em)
-        VALUES (?,?,?,?,'ITZ',1,?)
-        ON CONFLICT(login) DO UPDATE SET
-            nome=excluded.nome, senha_hash=excluded.senha_hash,
-            papel=excluded.papel, ativo=1
-    """, (login, nome, senha_hash, papel,
-          datetime.now(timezone.utc).isoformat(timespec="seconds")))
-    con.commit()
-    con.close()
+    with psycopg.connect(url, autocommit=True) as con:
+        con.execute("""
+            INSERT INTO usuarios (login, nome, senha_hash, papel, base, ativo, criado_em)
+            VALUES (%s,%s,%s,%s,'ITZ',1,%s)
+            ON CONFLICT(login) DO UPDATE SET
+                nome=excluded.nome, senha_hash=excluded.senha_hash,
+                papel=excluded.papel, ativo=1
+        """, (login, nome, senha_hash, papel,
+              datetime.now(timezone.utc).isoformat(timespec="seconds")))
     print("[OK] usuario '%s' (%s) pronto." % (login, papel))
 
 
