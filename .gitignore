@@ -5,6 +5,9 @@ dados/fotos/*
 !dados/fotos/.gitkeep
 
 # ambiente
+.env
+.env.*
+!.env.example
 .venv/
 venv/
 __pycache__/
