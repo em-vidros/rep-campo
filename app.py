@@ -1359,7 +1359,8 @@ def api_sugestao():
     elif municipio:
         filtros.append("c.cidade LIKE ?")
         args.append("%%%s%%" % municipio)
-    if rota:
+    # cidades escolhidas mandam no escopo - podem ser de outra rota (passagem)
+    if rota and not cidades:
         if rota == "Sem rota":
             filtros.append("(c.rota IS NULL OR TRIM(c.rota) = '' OR LOWER(TRIM(c.rota)) = 'sem rota')")
         else:

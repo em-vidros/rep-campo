@@ -54,6 +54,14 @@
           <button type="button" class="mini" id="btn-nenhuma">limpar</button>
           <span id="resumo-cidades" class="dica"></span>
         </div>
+        <label style="margin-top:14px">Cidade de passagem
+          <small class="dica">Cliente fora da rota que fica no caminho — pode ser de qualquer rota.</small>
+          <div class="linha-avulsa">
+            <input id="cidade-avulsa" list="todas-cidades" placeholder="digite a cidade" autocomplete="off">
+            <datalist id="todas-cidades"></datalist>
+            <button type="button" class="mini" id="btn-add-cidade">adicionar</button>
+          </div>
+        </label>
       </div>
       <div class="dupla">
         <label>Saída<input id="v-inicio" type="date"></label>

@@ -7,7 +7,7 @@ const brl = v => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency:
 const dataBR = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
 
 let sugeridos = [], escolhidos = new Set();
-let ROTAS = [], cidadesMarcadas = new Set();
+let ROTAS = [], cidadesMarcadas = new Set(), avulsas = new Map();
 
 function msg(t, erro) {
   $('msg').innerHTML = `<div class="alerta ${erro ? 'erro' : 'info'}">${esc(t)}</div>`;
@@ -30,12 +30,20 @@ async function carregarRotas() {
   const d = await r.json();
   ROTAS = d.rotas;
   $('v-rota').innerHTML = '<option value="">selecione a rota</option>' +
-    ROTAS.map(x => `<option value="${esc(x.rota)}">${esc(x.rota)} — ${x.clientes} clientes · ${x.cidades.length} cidade(s)</option>`).join('');
+    ROTAS.map(x => `<option value="${esc(x.rota)}">${esc(x.rota)}</option>`).join('');
+
+  // todas as cidades, para a de passagem - mostra a rota de origem
+  const todas = ROTAS.flatMap(r => r.cidades.map(c => ({ ...c, rota: r.rota })));
+  todas.sort((a, b) => a.cidade.localeCompare(b.cidade, 'pt-BR'));
+  $('todas-cidades').innerHTML = todas
+    .map(c => `<option value="${esc(c.cidade)}">${esc(c.rota)} · ${c.clientes} cliente(s)</option>`).join('');
+  window.TODAS_CIDADES = todas;
 }
 
 $('v-rota').onchange = () => {
   const rota = ROTAS.find(x => x.rota === $('v-rota').value);
   cidadesMarcadas = new Set();
+  avulsas = new Map();
   $('box-cidades').classList.toggle('oculto', !rota);
   if (!rota) return desenharChips(null);
   rota.cidades.forEach(c => cidadesMarcadas.add(c.cidade));   // começa com tudo
@@ -43,22 +51,56 @@ $('v-rota').onchange = () => {
 };
 
 function desenharChips(rota) {
-  if (!rota) { $('chips-cidades').innerHTML = ''; return; }
-  $('chips-cidades').innerHTML = rota.cidades.map(c => `
+  if (!rota) { $('chips-cidades').innerHTML = ''; $('resumo-cidades').textContent = ''; return; }
+  const daRota = rota.cidades.map(c => `
     <button type="button" class="chip ${cidadesMarcadas.has(c.cidade) ? 'on' : ''}"
             data-cidade="${esc(c.cidade)}">
       ${esc(c.cidade)} <span>${c.clientes}</span>
     </button>`).join('');
-  $('chips-cidades').querySelectorAll('.chip').forEach(b => b.onclick = () => {
+  const extras = [...avulsas.values()].map(c => `
+    <button type="button" class="chip passagem ${cidadesMarcadas.has(c.cidade) ? 'on' : ''}"
+            data-cidade="${esc(c.cidade)}" title="de passagem — rota ${esc(c.rota)}">
+      ${esc(c.cidade)} <span>${c.clientes}</span>
+      <b class="tira" data-tirar="${esc(c.cidade)}">×</b>
+    </button>`).join('');
+  $('chips-cidades').innerHTML = daRota + extras;
+
+  $('chips-cidades').querySelectorAll('.chip').forEach(b => b.onclick = ev => {
+    if (ev.target.dataset.tirar) {
+      avulsas.delete(ev.target.dataset.tirar);
+      cidadesMarcadas.delete(ev.target.dataset.tirar);
+      return desenharChips(rota);
+    }
     const cid = b.dataset.cidade;
     cidadesMarcadas.has(cid) ? cidadesMarcadas.delete(cid) : cidadesMarcadas.add(cid);
     desenharChips(rota);
   });
-  const total = rota.cidades.filter(c => cidadesMarcadas.has(c.cidade))
-    .reduce((s, c) => s + c.clientes, 0);
+
+  const marcadas = rota.cidades.concat([...avulsas.values()])
+    .filter(c => cidadesMarcadas.has(c.cidade));
+  const total = marcadas.reduce((s, c) => s + c.clientes, 0);
+  const nPass = [...avulsas.keys()].filter(c => cidadesMarcadas.has(c)).length;
   $('resumo-cidades').textContent =
-    `${cidadesMarcadas.size} de ${rota.cidades.length} cidade(s) · ${total} cliente(s) na carteira`;
+    `${marcadas.length} cidade(s)${nPass ? ' (' + nPass + ' de passagem)' : ''} · ${total} cliente(s) na carteira`;
 }
+
+/* cidade de passagem: cliente fora da rota que fica no caminho */
+$('btn-add-cidade').onclick = () => {
+  const nome = $('cidade-avulsa').value.trim();
+  if (!nome) return;
+  const achada = (window.TODAS_CIDADES || []).find(c => c.cidade === nome);
+  if (!achada) return msg('Cidade não encontrada na carteira.', true);
+  const rota = ROTAS.find(x => x.rota === $('v-rota').value);
+  if (rota && rota.cidades.some(c => c.cidade === nome))
+    return msg('Essa cidade já está na rota escolhida.', true);
+  avulsas.set(nome, achada);
+  cidadesMarcadas.add(nome);
+  $('cidade-avulsa').value = '';
+  desenharChips(rota);
+};
+$('cidade-avulsa').addEventListener('keydown', ev => {
+  if (ev.key === 'Enter') { ev.preventDefault(); $('btn-add-cidade').click(); }
+});
 
 $('btn-todas').onclick = () => {
   const rota = ROTAS.find(x => x.rota === $('v-rota').value);
@@ -80,7 +122,6 @@ async function buscarSugestao() {
   }
   $('aviso-filtro').textContent = '';
   const q = new URLSearchParams();
-  q.set('rota', $('v-rota').value);
   q.set('cidades', [...cidadesMarcadas].join('|'));
   q.set('limite', '120');
   const r = await fetch('/api/sugestao?' + q);
@@ -141,7 +182,7 @@ $('btn-criar').onclick = async () => {
     body: JSON.stringify({ clientes: escolha }) });
 
   msg('Viagem criada com ' + escolha.length + ' cliente(s).');
-  escolhidos = new Set(); cidadesMarcadas = new Set();
+  escolhidos = new Set(); cidadesMarcadas = new Set(); avulsas = new Map();
   $('form-viagem').reset(); $('lista-sugestao').innerHTML = '';
   $('box-cidades').classList.add('oculto');
   atualizarRodape();

@@ -167,3 +167,9 @@ tbody tr.nunca{background:#fdecea}
 .chip.on{background:var(--verde);color:#fff;border-color:var(--verde)}
 .chip.on span{background:rgba(255,255,255,.22);color:#fff}
 .acoes-chips{display:flex;gap:9px;align-items:center;margin-top:10px;flex-wrap:wrap}
+.chip.passagem{border-style:dashed}
+.chip.passagem.on{border-style:dashed;border-color:#cfe0d8}
+.chip .tira{margin-left:3px;opacity:.7;font-weight:700;padding:0 2px}
+.chip .tira:hover{opacity:1}
+.linha-avulsa{display:flex;gap:8px;align-items:center;margin-top:5px}
+.linha-avulsa input{margin-top:0}
