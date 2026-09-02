@@ -81,7 +81,7 @@ ETAPAS_JORNADA = [
     "Preco e condicao",
     "Prazo de producao",
     "Prazo de entrega",
-    "Entrega",
+    "Qualidade da entrega",
     "Qualidade do produto",
     "Pos-venda e resolucao de problemas",
     "Atendimento comercial",
@@ -104,7 +104,8 @@ METRICA_POR_ETAPA = {
     "Prazo de entrega": "csat",
     "Prazo prometido": "csat",                      # nome antigo
     "Producao e acabamento": "csat",                # nome antigo
-    "Entrega": "csat",
+    "Qualidade da entrega": "csat",
+    "Entrega": "csat",                              # nome antigo, ja gravado
     "Qualidade do produto": "csat",
     "Atendimento comercial": "csat",
     "Atendimento da expedicao": "csat",
@@ -160,7 +161,7 @@ PROCESSOS_CSAT = [
     {"item": "Preco e condicao"},
     {"item": "Prazo de producao"},
     {"item": "Prazo de entrega"},
-    {"item": "Entrega"},
+    {"item": "Qualidade da entrega"},
     {"item": "Qualidade do produto"},
     {"item": "Pos-venda e resolucao de problemas"},
     {"item": "Atendimento comercial"},

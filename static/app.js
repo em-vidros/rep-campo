@@ -219,10 +219,11 @@ function montarPesquisaCompleta(box) {
   const linhas = (CFG.processos_csat || []).map((p, i) => {
     const proc = typeof p === 'string' ? { item: p } : p;
     const unidades = proc.unidades
-      ? `<select class="unidade-proc oculto" data-unidade="${esc(proc.item)}">
-           <option value="">qual expedição?</option>
-           ${proc.unidades.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}
-         </select>` : '';
+      ? `<label class="rotulo-unidade">De qual unidade?
+           <select class="unidade-proc" data-unidade="${esc(proc.item)}">
+             <option value="">selecione a expedição</option>
+             ${proc.unidades.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}
+           </select></label>` : '';
     return `<div class="proc">
       <div class="proc-nome">${esc(proc.item)}
         ${proc.condicional ? `<small class="dica">${esc(proc.condicional)}</small>` : ''}</div>
@@ -272,9 +273,9 @@ function montarPesquisaCompleta(box) {
       linha.querySelectorAll('.nota-min').forEach(x => x.classList.remove('escolhida'));
       b.classList.add('escolhida');
       linha.dataset.nota = b.dataset.n;
-      // a expedicao so pergunta qual unidade depois que houve nota
+      // marcou n/a: a unidade nao se aplica mais
       const sel = linha.parentNode.querySelector('.unidade-proc');
-      if (sel) sel.classList.toggle('oculto', !b.dataset.n);
+      if (sel && !b.dataset.n) sel.value = '';
     }));
   delete box.dataset.nota;
 }

@@ -187,3 +187,4 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 @media (max-width:420px){ .proc-notas{grid-template-columns:repeat(6,1fr)} }
 .proc-nome .dica{display:inline;margin-left:6px;font-size:.68rem}
 .unidade-proc{margin-top:6px;padding:9px 10px;font-size:.85rem}
+.rotulo-unidade{margin-top:7px;font-size:.72rem}
