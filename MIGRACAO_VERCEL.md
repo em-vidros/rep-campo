@@ -71,6 +71,7 @@ freio de força bruta abaixo. Leia com atenção.
 flask
 psycopg[binary]
 requests
+python-dotenv
 ```
 
 ### `vercel.json`
@@ -111,6 +112,18 @@ pelo mesmo `CREATE`.
 
 Apague o `os.makedirs(FOTOS_DIR, exist_ok=True)` da linha 31. Não há mais pasta
 de fotos local.
+
+O `.env` não se carrega sozinho. O Flask não lê arquivo `.env`, e o `app.py` só
+consulta `os.environ`. Para o teste local funcionar, acrescente no topo do
+arquivo, antes de qualquer `os.environ`:
+
+```python
+from dotenv import load_dotenv
+load_dotenv()
+```
+
+Na Vercel isso não faz efeito, porque lá não existe `.env` e as variáveis já
+chegam pelo ambiente do projeto. Serve só para o Mac.
 
 Troque o `_secret_key()` inteiro por uma leitura de variável de ambiente, sem
 plano B:
@@ -293,7 +306,9 @@ dizendo o que mudou e em que data.
 1. Confirme que `.env` está no `.gitignore`.
 2. Crie `DATABASE_URL`, `BLOB_READ_WRITE_TOKEN` e `REP_SECRET_KEY` nas variáveis
    de ambiente do projeto na Vercel. As três, não duas. Um `.env` no Mac não
-   chega na Vercel.
+   chega na Vercel. Chave de administração da conta do Neon não entra nessa
+   lista: o app não usa, e guardá-la junto só aumenta o estrago se o arquivo
+   vazar.
 3. Escreva o `setup_db.py` e rode do Mac. Confira as quatro tabelas no Neon.
 4. Converta o `app.py`, seguindo as seções acima na ordem em que aparecem.
 5. Adicione `requirements.txt`, `vercel.json` e `api/index.py`.
