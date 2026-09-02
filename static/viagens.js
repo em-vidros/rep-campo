@@ -29,6 +29,13 @@ async function carregarRotas() {
   if (!r.ok) return;
   const d = await r.json();
   ROTAS = d.rotas;
+  // avisa sobre cadastro de outra base, sem esconder o problema
+  if (d.clientes_fora) {
+    const quais = [...new Set(d.fora_da_base.map(x => x.rota))].join(', ');
+    $('msg').innerHTML = `<div class="alerta info">${d.clientes_fora} cliente(s) na carteira
+      com rota de outra base (${esc(quais)}) ficaram fora do planejamento — provável
+      falha de cadastro. Continuam na carteira; só não são sugeridos.</div>`;
+  }
   $('v-rota').innerHTML = '<option value="">selecione a rota</option>' +
     ROTAS.map(x => `<option value="${esc(x.rota)}">${esc(x.rota)}</option>`).join('');
 

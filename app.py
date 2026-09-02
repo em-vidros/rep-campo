@@ -174,6 +174,17 @@ PROCESSOS_CSAT = [
 
 EXPEDICOES = ["Imperatriz", "Santa Ines", "Ananindeua"]
 
+# Rotas que NAO pertencem a base Itz (fonte: reference_rotas_tabelas /
+# EMVIDROS_COMERCIAL_ESTRUTURA). Cliente com rota destas na carteira Itz e
+# falha de cadastro - o REP da base Itz nao vai visitar. Fica na carteira,
+# mas sai do planejamento de viagem. Nada e apagado.
+ROTAS_FORA_DA_BASE = {"sao luis", "sao luis/ma", "teresina", "bacabal",
+                      "angelim", "guajajaras"}
+
+
+def _fora_da_base(rota):
+    return _norm(rota) in ROTAS_FORA_DA_BASE
+
 
 # NPS cansa se perguntado toda visita. CSAT e CES podem ser sempre.
 DIAS_MINIMOS_ENTRE_NPS = 90
@@ -1314,7 +1325,7 @@ def api_rotas():
     nesta viagem, porque nem toda rota se faz de uma vez.
     """
     db = get_db()
-    rotas = {}
+    rotas, descartados = {}, []
     for r in db.execute("""
         SELECT COALESCE(NULLIF(TRIM(rota),''),'Sem rota') AS rota,
                COALESCE(NULLIF(TRIM(cidade),''),'Sem cidade') AS cidade,
@@ -1325,6 +1336,9 @@ def api_rotas():
         # "Sem Rota" e "sem Rota" sao a mesma coisa na carteira
         if nome.lower() in ("sem rota", "sem rota "):
             nome = "Sem rota"
+        if _fora_da_base(nome):
+            descartados.append({"rota": nome, "cidade": r["cidade"], "clientes": r["n"]})
+            continue
         d = rotas.setdefault(nome, {"rota": nome, "cidades": [], "clientes": 0, "vol_12m": 0})
         d["cidades"].append({"cidade": r["cidade"], "clientes": r["n"],
                              "vol_12m": r["vol"] or 0})
@@ -1332,7 +1346,9 @@ def api_rotas():
         d["vol_12m"] += r["vol"] or 0
 
     lista = sorted(rotas.values(), key=lambda x: -x["vol_12m"])
-    return jsonify({"rotas": lista, "total_clientes": sum(x["clientes"] for x in lista)})
+    return jsonify({"rotas": lista, "total_clientes": sum(x["clientes"] for x in lista),
+                    "fora_da_base": descartados,
+                    "clientes_fora": sum(x["clientes"] for x in descartados)})
 
 
 @app.route("/api/sugestao")
@@ -1383,6 +1399,11 @@ def api_sugestao():
     hoje = datetime.now(timezone.utc)
     saida = []
     for r in rows:
+        # rota de outra base na carteira Itz e falha de cadastro: nao sugere.
+        # Filtrado aqui, e nao no SQL, porque o LOWER do SQLite nao tira acento
+        # ("Sao Luis" e "Sao Luis" com acento nao batem).
+        if _fora_da_base(r["rota"]):
+            continue
         ciclo = ciclo_do_municipio(r["cidade"])
         dias = None
         if r["ultima_visita"]:
