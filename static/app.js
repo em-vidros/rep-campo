@@ -72,7 +72,8 @@ const CAMPOS = {
   ],
   tecnica: [
     { id: 'pedido_nf', rot: 'Numero do pedido ou NF', tipo: 'text' },
-    { id: 'problema', rot: 'Descricao do problema', tipo: 'textarea' },
+    { id: 'problema_tipo', rot: 'Tipo de ocorrencia *', tipo: 'problemas' },
+    { id: 'problema_outros', rot: 'Qual? (se marcou Outros)', tipo: 'text' },
     { id: 'resolvido_local', rot: 'Resolvido no local?', tipo: 'select', ops: ['nao', 'sim'] },
     { id: 'prazo_prometido', rot: 'Prazo prometido ao cliente', tipo: 'date' },
     { id: 'responsavel_interno', rot: 'Quem foi acionado internamente', tipo: 'text' },
@@ -122,6 +123,10 @@ function montarCampos(tipo) {
         c.ops.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
     } else if (c.tipo === 'textarea') {
       el = document.createElement('textarea'); el.rows = 3;
+    } else if (c.tipo === 'problemas') {
+      el = document.createElement('select');
+      el.innerHTML = '<option value=""></option>' +
+        (CFG.problemas || []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
     } else if (c.tipo === 'itens') {
       el = document.createElement('div');
       el.className = 'itens-preco';
@@ -150,6 +155,41 @@ function montarCampos(tipo) {
     ? 'Foto <b class="obrig">obrigatoria neste tipo</b>'
     : 'Foto <span class="dica">(opcional)</span>';
   $('wrap-encaminhado').classList.toggle('oculto', !['comercial', 'prospeccao', 'tecnica'].includes(tipo));
+}
+
+/* Pesquisa de experiencia - vai em TODA visita, com pergunta pertinente ao tipo.
+   Um toque obrigatorio (a nota); o resto e opcional, para nao passar de 2 min. */
+function montarExperiencia(tipo) {
+  const box = $('bloco-experiencia');
+  const par = (CFG.pergunta_experiencia || {})[tipo] || ['Relacionamento geral', 'Como esta sendo a experiencia com a gente?'];
+  const [etapaPadrao, pergunta] = par;
+  const prospect = tipo === 'prospeccao';
+
+  box.innerHTML = `
+    <fieldset class="bloco-exp">
+      <legend>Experiencia do cliente <b class="obrig">${prospect ? 'opcional' : 'nota obrigatoria'}</b></legend>
+      <small class="dica">${esc(pergunta)}</small>
+      <div class="notas" id="notas-exp">
+        ${Array.from({ length: 11 }, (_, n) =>
+          `<button type="button" class="nota" data-nota="${n}">${n}</button>`).join('')}
+      </div>
+      <label>O que ele avaliou
+        <select id="f-exp-etapa">
+          ${(CFG.etapas_jornada || []).map(e =>
+            `<option value="${esc(e)}"${e === etapaPadrao ? ' selected' : ''}>${esc(e)}</option>`).join('')}
+        </select>
+      </label>
+      <label>Nas palavras dele (opcional)
+        <textarea id="f-exp-comentario" rows="2" placeholder="o que ele falou, do jeito que falou"></textarea>
+      </label>
+    </fieldset>`;
+
+  box.querySelectorAll('.nota').forEach(b => b.onclick = () => {
+    box.querySelectorAll('.nota').forEach(x => x.classList.remove('escolhida'));
+    b.classList.add('escolhida');
+    box.dataset.nota = b.dataset.nota;
+  });
+  delete box.dataset.nota;
 }
 
 function lerCampos(tipo) {
@@ -233,6 +273,13 @@ $('form-ficha').addEventListener('submit', async ev => {
   if (!passo) erros.push('O proximo passo e obrigatorio - sem ele a visita nao conta.');
   if (FOTO_OBRIGATORIA.includes(tipoAtual) && !fotoDataUrl)
     erros.push('Este tipo de visita exige foto.');
+  if (tipoAtual === 'tecnica') {
+    const tp = (document.getElementById('x-problema_tipo') || {}).value;
+    const outro = (document.getElementById('x-problema_outros') || {}).value || '';
+    if (!tp) erros.push('Escolha o tipo de ocorrência.');
+    if (tp === 'Outros' && !outro.trim())
+      erros.push('Descreva a ocorrência no campo "Qual?".');
+  }
 
   const caixa = $('erros-form');
   if (erros.length) {
@@ -242,6 +289,11 @@ $('form-ficha').addEventListener('submit', async ev => {
     return;
   }
   caixa.classList.add('oculto');
+
+  const boxExp = $('bloco-experiencia');
+  const notaExp = boxExp.dataset.nota;
+  if (tipoAtual !== 'prospeccao' && notaExp === undefined)
+    erros.push('Dê a nota da experiência do cliente (0 a 10).');
 
   const achado = CFG.clientes.find(c => c.nome === cliente);
   const ficha = {
@@ -257,6 +309,10 @@ $('form-ficha').addEventListener('submit', async ev => {
     lat: geo.lat, lon: geo.lon, precisao: geo.precisao,
     criado_em_disp: new Date().toISOString(),
     foto: fotoDataUrl, extra: lerCampos(tipoAtual),
+    problema_tipo: (document.getElementById('x-problema_tipo') || {}).value || null,
+    exp_etapa: ($('f-exp-etapa') || {}).value || null,
+    exp_nota: notaExp === undefined ? null : Number(notaExp),
+    exp_comentario: ($('f-exp-comentario') || {}).value || null,
     app_versao: VERSAO,
   };
 
@@ -313,7 +369,12 @@ async function sincronizar() {
       if (f) { delete f.foto; f.enviado_em = new Date().toISOString(); await enviadaSalvar(f); }
       await filaTirar(id);
     }
-    if ((dados.aceitas || []).length) aviso(dados.aceitas.length + ' ficha(s) enviada(s).');
+    if ((dados.ocorrencias || []).length) {
+      const nums = dados.ocorrencias.map(o => o.numero).join(', ');
+      aviso('Ocorrencia aberta: ' + nums);
+    } else if ((dados.aceitas || []).length) {
+      aviso(dados.aceitas.length + ' ficha(s) enviada(s).');
+    }
     if ((dados.rejeitadas || []).length)
       aviso(dados.rejeitadas.length + ' ficha(s) recusada(s) pelo servidor.', true);
   } catch (e) {
@@ -355,6 +416,7 @@ document.querySelectorAll('.cartao-tipo').forEach(b => b.onclick = () => {
   tipoAtual = b.dataset.tipo;
   $('rotulo-tipo').textContent = b.querySelector('b').textContent;
   montarCampos(tipoAtual);
+  montarExperiencia(tipoAtual);
   $('passo-tipo').classList.add('oculto');
   $('form-ficha').classList.remove('oculto');
   pegarGeo();
@@ -370,10 +432,30 @@ $('f-relato').addEventListener('input', ev => {
 });
 $('f-cliente').addEventListener('input', ev => {
   const c = CFG.clientes.find(x => x.nome === ev.target.value.trim());
-  $('dica-cliente').textContent = c
-    ? 'codigo ' + c.codigo + (c.cidade ? ' - ' + c.cidade : '') + (c.curva ? ' - curva ' + c.curva : '')
-    : 'nao encontrado na carteira: sera registrado como cliente novo';
-  if (c && c.cidade && !$('f-municipio').value) $('f-municipio').value = c.cidade;
+  const cartao = $('cartao-cliente');
+  if (c) {
+    $('dica-cliente').textContent = '';
+    const brl = v => (v || 0).toLocaleString('pt-BR',
+      { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
+    cartao.innerHTML = `
+      <div class="cc-linha"><span>Codigo</span><b>${esc(c.codigo)}</b></div>
+      <div class="cc-linha"><span>Cidade</span><b>${esc(c.cidade || '-')}</b></div>
+      <div class="cc-linha"><span>Rota</span><b>${esc(c.rota || '-')}</b></div>
+      <div class="cc-linha"><span>Vendedor</span><b>${esc(c.vendedor || '-')}</b></div>
+      <div class="cc-linha"><span>Curva</span><b>${c.curva ? 'classe ' + esc(c.curva) : 'sem classificacao'}</b></div>
+      <div class="cc-linha"><span>Comprou 12m</span><b>${brl(c.vol_12m)}</b></div>`;
+    cartao.classList.remove('oculto');
+    if (c.cidade && !$('f-municipio').value) $('f-municipio').value = c.cidade;
+    if (c.vendedor) {
+      const opt = [...$('f-encaminhado').options].find(o =>
+        c.vendedor.toLowerCase().startsWith(o.value.toLowerCase().split(' ')[0]) && o.value);
+      if (opt) $('f-encaminhado').value = opt.value;   // sugere o vendedor da carteira
+    }
+  } else {
+    cartao.classList.add('oculto');
+    $('dica-cliente').textContent = ev.target.value.trim()
+      ? 'nao encontrado na carteira: sera registrado como cliente novo' : '';
+  }
 });
 
 /* ------------------------------------------------------------- renderizacao */
@@ -430,6 +512,17 @@ async function carregarCfg() {
     .map(c => `<option value="${esc(c.nome)}">`).join('');
   $('lista-municipios').innerHTML = (CFG.municipios || [])
     .map(m => `<option value="${esc(m)}">`).join('');
+
+  // quem executa o proximo passo: pessoas e areas reais, nao texto livre
+  const grupos = CFG.responsaveis || {};
+  const opcoes = '<option value=""></option>' + Object.entries(grupos)
+    .map(([grupo, nomes]) => `<optgroup label="${esc(grupo)}">` +
+      nomes.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('') +
+      '</optgroup>').join('');
+  ['f-passo-resp', 'f-encaminhado'].forEach(id => {
+    const el = $(id);
+    if (el) el.innerHTML = opcoes;
+  });
 }
 
 function recuperarRascunho() {

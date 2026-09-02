@@ -63,6 +63,8 @@
         <small id="dica-cliente" class="dica"></small>
       </label>
 
+      <div id="cartao-cliente" class="cartao-cliente oculto"></div>
+
       <label class="linha-check">
         <input type="checkbox" id="f-prospect"> Cliente novo (nao esta na carteira)
       </label>
@@ -90,17 +92,19 @@
           <input id="f-passo" placeholder="ex: enviar orcamento de temperado 8mm" required>
         </label>
         <div class="dupla">
-          <label>Quem
-            <input id="f-passo-resp" placeholder="eu / vendedor / gerente">
+          <label>Quem faz
+            <select id="f-passo-resp"><option value=""></option></select>
           </label>
           <label>Quando
             <input id="f-passo-data" type="date">
           </label>
         </div>
         <label id="wrap-encaminhado">Encaminhar para
-          <input id="f-encaminhado" placeholder="nome do vendedor ou gerente">
+          <select id="f-encaminhado"><option value=""></option></select>
         </label>
       </fieldset>
+
+      <div id="bloco-experiencia"></div>
 
       <div class="bloco-foto">
         <label id="rotulo-foto">Foto</label>

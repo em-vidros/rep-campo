@@ -121,3 +121,21 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .cartao-login .btn{margin-top:22px}
 
 .topo-links{display:flex;gap:14px;align-items:center}
+
+/* ---- cartao com os dados do cadastro do cliente (v2) ---- */
+.cartao-cliente{background:#fff;border:1px solid var(--borda);border-left:4px solid var(--verde-claro);
+  border-radius:10px;padding:10px 12px;margin-top:10px}
+.cc-linha{display:flex;justify-content:space-between;gap:10px;padding:3px 0;font-size:.84rem}
+.cc-linha span{color:var(--cinza);font-size:.75rem;text-transform:uppercase;letter-spacing:.3px;font-weight:600}
+.cc-linha b{text-align:right}
+
+/* ---- pesquisa de experiencia (v2) ---- */
+.bloco-exp{border-color:var(--aviso)}
+.bloco-exp legend{color:var(--aviso)}
+.notas{display:grid;grid-template-columns:repeat(11,1fr);gap:3px;margin:9px 0 4px}
+.nota{padding:11px 0;border:1px solid var(--borda);background:#fff;border-radius:7px;
+  font-size:.85rem;font-weight:600;color:var(--cinza)}
+.nota:nth-child(-n+7){border-color:#f0c9c5}
+.nota:nth-child(n+10){border-color:#c9e3d6}
+.nota.escolhida{background:var(--verde);color:#fff;border-color:var(--verde);transform:scale(1.06)}
+@media (max-width:380px){ .notas{grid-template-columns:repeat(6,1fr)} }

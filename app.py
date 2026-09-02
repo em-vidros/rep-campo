@@ -48,6 +48,57 @@ MUNICIPIOS_MIGRACAO = [
 
 RELATO_MIN = 200  # caracteres - regra do manual (§5.1)
 
+# Ocorrencias tecnicas mais comuns (definidas pelo Ricardo em 02/09/2026).
+# "etiqueta trocada" e "troca de etiqueta" eram a mesma coisa - unificadas.
+PROBLEMAS_TECNICOS = [
+    "Arranhao",
+    "Ralado",
+    "Quebra espontanea",
+    "Avaria da peca",
+    "Troca de etiqueta",
+    "Mancha",
+    "Erro de fabricacao",
+    "Quantidade errada",
+    "Outros",
+]
+
+# Quem pode receber um encaminhamento. Fonte: EMVIDROS_COMERCIAL_ESTRUTURA.md
+# (recorte da base Itz pos-migracao da Sti em 01/09/2026) + cargos de apoio.
+RESPONSAVEIS = {
+    "Representante": ["Sipiao"],
+    "Gerentes": ["Marcia (Itz)", "Alessandra (Bel)", "Jair (Sti)"],
+    "Consultores Itz": ["Ariana", "Ellen", "Nathielly", "Patricia", "Rafaela",
+                        "Keliane (aluminio)"],
+    "Consultores Bel": ["Clicia", "Jessica"],
+    "Consultores Sti": ["Jadson", "Thayna"],
+    "Areas": ["Gerente de Producao", "PCP", "Qualidade", "Expedicao",
+              "Financeiro", "Diretoria"],
+}
+
+# Etapas da jornada de compra - o que a pesquisa de experiencia avalia.
+ETAPAS_JORNADA = [
+    "Cotacao e orcamento",
+    "Preco e condicao",
+    "Prazo prometido",
+    "Producao e acabamento",
+    "Entrega",
+    "Qualidade do produto",
+    "Pos-venda e resolucao de problema",
+    "Relacionamento geral",
+]
+
+# A pergunta de experiencia muda conforme o tipo - pesquisa pertinente a
+# situacao, em vez de questionario igual para todos.
+PERGUNTA_EXPERIENCIA = {
+    "comercial":    ("Cotacao e orcamento", "Como foi a ultima cotacao que fizemos pra voce?"),
+    "cordialidade": ("Relacionamento geral", "De 0 a 10, o quanto recomendaria a EM Vidros?"),
+    "tecnica":      ("Pos-venda e resolucao de problema", "Como avalia nosso atendimento deste problema ate agora?"),
+    "prospeccao":   ("Relacionamento geral", "O que te faria comprar da EM Vidros?"),
+    "preco":        ("Preco e condicao", "Como avalia nosso preco frente ao prazo e a entrega?"),
+    "voz":          ("Relacionamento geral", "De 0 a 10, o quanto recomendaria a EM Vidros?"),
+    "evento":       ("Relacionamento geral", "Como a EM Vidros e vista no mercado hoje?"),
+}
+
 
 def _secret_key():
     env = os.environ.get("REP_SECRET_KEY")
@@ -83,6 +134,7 @@ LIMITES_TEXTO = {
     "cliente_nome": 200, "municipio": 120, "objetivo": 400, "relato": 5000,
     "proximo_passo": 600, "prox_responsavel": 120, "prox_data": 20,
     "encaminhado_para": 120, "criado_em_disp": 40, "app_versao": 20,
+    "problema_tipo": 60, "exp_etapa": 60, "exp_comentario": 1200,
 }
 MAX_EXTRA_JSON = 20000          # bytes do bloco "extra" ja serializado
 
@@ -169,6 +221,14 @@ SCHEMA = {
 COLUNAS_EXTRA = {
     "fichas": [
         ("app_versao", "TEXT"),
+        # v2 (02/09/2026)
+        ("problema_tipo", "TEXT"),        # ocorrencia escolhida na lista
+        ("ocorrencia_num", "TEXT"),       # numero gerado pelo servidor (so tecnica)
+        ("ocorrencia_status", "TEXT"),    # aberta | resolvida
+        ("ocorrencia_fechada_em", "TEXT"),
+        ("exp_etapa", "TEXT"),            # etapa da jornada avaliada
+        ("exp_nota", "INTEGER"),          # 0 a 10
+        ("exp_comentario", "TEXT"),       # nas palavras do cliente
     ],
 }
 
@@ -330,6 +390,10 @@ def api_bootstrap():
         "clientes": clientes,
         "municipios": municipios,
         "tipos": TIPOS,
+        "problemas": PROBLEMAS_TECNICOS,
+        "responsaveis": RESPONSAVEIS,
+        "etapas_jornada": ETAPAS_JORNADA,
+        "pergunta_experiencia": PERGUNTA_EXPERIENCIA,
         "relato_min": RELATO_MIN,
         "gerado_em": _agora(),
     })
@@ -396,6 +460,26 @@ def _num(v):
         return None
 
 
+def _proxima_ocorrencia(db):
+    """Numero sequencial por ano: OC-2026-0001.
+
+    Gerado no SERVIDOR, nao no celular: o aparelho pode estar offline e dois
+    aparelhos gerariam o mesmo numero. O app mostra o numero depois do sync.
+    """
+    ano = datetime.now(timezone.utc).strftime("%Y")
+    prefixo = "OC-%s-" % ano
+    ultimo = db.execute(
+        "SELECT ocorrencia_num FROM fichas WHERE ocorrencia_num LIKE ? "
+        "ORDER BY ocorrencia_num DESC LIMIT 1", (prefixo + "%",)).fetchone()
+    seq = 1
+    if ultimo and ultimo[0]:
+        try:
+            seq = int(ultimo[0].rsplit("-", 1)[1]) + 1
+        except (IndexError, ValueError):
+            seq = 1
+    return "%s%04d" % (prefixo, seq)
+
+
 def _classificar(ficha, tem_foto):
     """Nivel de evidencia conforme o manual §4. Nunca rejeita - classifica."""
     tem_geo = ficha.get("lat") is not None and ficha.get("lon") is not None
@@ -418,7 +502,7 @@ def api_receber_fichas():
         return jsonify({"erro": "payload_invalido"}), 400
 
     db = get_db()
-    aceitas, rejeitadas = [], []
+    aceitas, rejeitadas, ocorrencias = [], [], []
 
     for ficha in payload["fichas"][:50]:
         uuid_f = (ficha.get("uuid") or "").strip()
@@ -441,13 +525,27 @@ def api_receber_fichas():
         nivel, tem_passo = _classificar(ficha, bool(foto_arq))
         relato = (ficha.get("relato") or "").strip()[:LIMITES_TEXTO["relato"]]
 
+        # visita tecnica abre ocorrencia numerada, para ser acompanhada
+        ocorrencia = _proxima_ocorrencia(db) if tipo == "tecnica" else None
+        status_oc = "aberta" if ocorrencia else None
+
+        nota = ficha.get("exp_nota")
+        try:
+            nota = int(nota) if nota not in (None, "") else None
+            if nota is not None and not (0 <= nota <= 10):
+                nota = None
+        except (TypeError, ValueError):
+            nota = None
+
         db.execute("""
             INSERT INTO fichas (uuid, usuario_id, usuario_login, tipo, cliente_codigo,
                 cliente_nome, prospect, municipio, objetivo, relato, proximo_passo,
                 prox_responsavel, prox_data, encaminhado_para, lat, lon, precisao,
                 criado_em_disp, recebido_em, foto_arquivo, extra_json,
-                nivel_evidencia, conta_indicador, relato_curto, app_versao)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                nivel_evidencia, conta_indicador, relato_curto, app_versao,
+                problema_tipo, ocorrencia_num, ocorrencia_status,
+                exp_etapa, exp_nota, exp_comentario)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """, (
             uuid_f, session["uid"], session["login"], tipo,
             str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
@@ -461,12 +559,16 @@ def api_receber_fichas():
             nivel, 1 if tem_passo else 0,
             1 if len(relato) < RELATO_MIN else 0,
             _texto(ficha, "app_versao"),
+            _texto(ficha, "problema_tipo"), ocorrencia, status_oc,
+            _texto(ficha, "exp_etapa"), nota, _texto(ficha, "exp_comentario"),
         ))
         aceitas.append(uuid_f)
+        if ocorrencia:
+            ocorrencias.append({"uuid": uuid_f, "numero": ocorrencia})
 
     db.commit()
     return jsonify({"aceitas": aceitas, "rejeitadas": rejeitadas,
-                    "recebido_em": _agora()})
+                    "ocorrencias": ocorrencias, "recebido_em": _agora()})
 
 
 @app.route("/api/fichas")
@@ -653,6 +755,94 @@ def api_gestor_cobertura():
         "nunca_visitados": len([x for x in saida if x["dias"] is None]),
         "cobertura_pct": round(100.0 * (len(saida) - len(vencidos)) / len(saida), 1) if saida else 0.0,
         "risco_reais": round(sum(x["vol_12m"] for x in vencidos), 2),
+    })
+
+
+@app.route("/api/gestor/ocorrencias")
+@gestor_obrigatorio
+def api_gestor_ocorrencias():
+    """Ocorrencias tecnicas abertas pela ficha, para acompanhamento."""
+    situacao = request.args.get("situacao", "aberta")
+    onde = "WHERE ocorrencia_num IS NOT NULL"
+    args = []
+    if situacao in ("aberta", "resolvida"):
+        onde += " AND ocorrencia_status = ?"
+        args.append(situacao)
+    rows = get_db().execute(
+        "SELECT uuid, ocorrencia_num, ocorrencia_status, ocorrencia_fechada_em, "
+        "cliente_nome, cliente_codigo, municipio, problema_tipo, relato, "
+        "proximo_passo, prox_responsavel, prox_data, encaminhado_para, "
+        "recebido_em, criado_em_disp, foto_arquivo, usuario_login "
+        "FROM fichas " + onde + " ORDER BY ocorrencia_num DESC LIMIT 300", args
+    ).fetchall()
+
+    hoje = datetime.now(timezone.utc)
+    saida = []
+    for r in rows:
+        d = dict(r)
+        try:
+            d["dias_aberta"] = (hoje - datetime.fromisoformat(r["recebido_em"])).days
+        except (TypeError, ValueError):
+            d["dias_aberta"] = None
+        saida.append(d)
+
+    db = get_db()
+    return jsonify({
+        "ocorrencias": saida,
+        "abertas": db.execute("SELECT COUNT(*) c FROM fichas "
+                              "WHERE ocorrencia_status = 'aberta'").fetchone()["c"],
+        "resolvidas": db.execute("SELECT COUNT(*) c FROM fichas "
+                                 "WHERE ocorrencia_status = 'resolvida'").fetchone()["c"],
+    })
+
+
+@app.route("/api/gestor/ocorrencia/<numero>/resolver", methods=["POST"])
+@gestor_obrigatorio
+def api_resolver_ocorrencia(numero):
+    if not re.fullmatch(r"OC-\d{4}-\d{4}", numero or ""):
+        return jsonify({"erro": "numero_invalido"}), 400
+    db = get_db()
+    cur = db.execute(
+        "UPDATE fichas SET ocorrencia_status = 'resolvida', ocorrencia_fechada_em = ? "
+        "WHERE ocorrencia_num = ? AND ocorrencia_status = 'aberta'",
+        (_agora(), numero))
+    db.commit()
+    if not cur.rowcount:
+        return jsonify({"erro": "nao_encontrada_ou_ja_resolvida"}), 404
+    return jsonify({"ok": True, "numero": numero})
+
+
+@app.route("/api/gestor/experiencia")
+@gestor_obrigatorio
+def api_gestor_experiencia():
+    """Leitura da pesquisa de experiencia coletada nas visitas."""
+    db = get_db()
+    mes = request.args.get("mes")
+    onde, args = "WHERE exp_nota IS NOT NULL", []
+    if mes:
+        onde += " AND substr(recebido_em,1,7) = ?"
+        args.append(mes)
+    linhas = db.execute(
+        "SELECT exp_etapa, COUNT(*) n, ROUND(AVG(exp_nota),1) media, "
+        "SUM(CASE WHEN exp_nota >= 9 THEN 1 ELSE 0 END) promotores, "
+        "SUM(CASE WHEN exp_nota <= 6 THEN 1 ELSE 0 END) detratores "
+        "FROM fichas " + onde + " GROUP BY exp_etapa ORDER BY media ASC", args
+    ).fetchall()
+    total = db.execute("SELECT COUNT(*) c, ROUND(AVG(exp_nota),1) m FROM fichas " + onde,
+                       args).fetchone()
+    prom = db.execute("SELECT SUM(CASE WHEN exp_nota>=9 THEN 1 ELSE 0 END) p, "
+                      "SUM(CASE WHEN exp_nota<=6 THEN 1 ELSE 0 END) d FROM fichas " + onde,
+                      args).fetchone()
+    n = total["c"] or 0
+    nps = round(100.0 * ((prom["p"] or 0) - (prom["d"] or 0)) / n) if n else None
+    comentarios = [dict(r) for r in db.execute(
+        "SELECT cliente_nome, exp_etapa, exp_nota, exp_comentario, recebido_em "
+        "FROM fichas " + onde + " AND exp_comentario <> '' "
+        "ORDER BY exp_nota ASC, recebido_em DESC LIMIT 40", args)]
+    return jsonify({
+        "por_etapa": [dict(r) for r in linhas],
+        "total": n, "media": total["m"], "nps": nps,
+        "comentarios": comentarios,
     })
 
 

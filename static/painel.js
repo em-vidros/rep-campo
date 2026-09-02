@@ -15,6 +15,8 @@ document.querySelectorAll('.aba').forEach(b => b.onclick = () => {
   b.classList.add('ativa');
   $('tela-' + b.dataset.tela).classList.add('ativa');
   if (b.dataset.tela === 'fichas') carregarFichas();
+  if (b.dataset.tela === 'ocorrencias') carregarOcorrencias();
+  if (b.dataset.tela === 'experiencia') carregarExperiencia();
 });
 
 /* ------------------------------------------------------------- cobertura */
@@ -175,3 +177,89 @@ $('f-busca').oninput = () => { clearTimeout(tempo); tempo = setTimeout(carregarF
 ['f-mes', 'f-tipo', 'f-mun', 'f-usuario', 'f-nivel'].forEach(id => $(id).onchange = carregarFichas);
 
 carregarCobertura();
+
+
+/* ---------------------------------------------------------- ocorrencias */
+async function carregarOcorrencias() {
+  const r = await fetch('/api/gestor/ocorrencias?situacao=' + $('o-situacao').value);
+  if (!r.ok) return;
+  const d = await r.json();
+
+  $('cartoes-oc').innerHTML = `
+    <div class="cartao"><div class="num ${d.abertas ? 'num-alerta' : ''}">${d.abertas}</div>
+      <div class="rot">ocorrências abertas</div></div>
+    <div class="cartao"><div class="num">${d.resolvidas}</div>
+      <div class="rot">resolvidas</div></div>
+    <div class="cartao"><div class="num">${d.ocorrencias.filter(o => (o.dias_aberta || 0) > 7 && o.ocorrencia_status === 'aberta').length}</div>
+      <div class="rot">abertas há mais de 7 dias</div></div>`;
+
+  $('lista-oc').innerHTML = d.ocorrencias.map(o => {
+    const velha = o.ocorrencia_status === 'aberta' && (o.dias_aberta || 0) > 7;
+    return `<div class="ficha">
+      <div class="ficha-cab">
+        <div><b>${esc(o.ocorrencia_num)} · ${esc(o.cliente_nome)}</b>
+          <div class="sub">${esc(o.problema_tipo || 'sem tipo')} · ${esc(o.municipio || '—')}
+            · aberta há ${o.dias_aberta} dia(s) · ${esc(o.usuario_login)}</div></div>
+        <div class="ficha-selos">
+          ${o.ocorrencia_status === 'aberta'
+            ? `<span class="selo ${velha ? 'pendente' : 'media'}">${velha ? 'atrasada' : 'aberta'}</span>
+               <button class="btn-sec" data-resolver="${esc(o.ocorrencia_num)}">Marcar resolvida</button>`
+            : '<span class="selo forte">resolvida</span>'}
+        </div>
+      </div>
+      <div class="ficha-corpo">
+        <div class="bloco"><h4>Relato</h4><p>${esc(o.relato || '—')}</p></div>
+        <div class="bloco"><h4>Próximo passo</h4>
+          <p class="passo">${esc(o.proximo_passo || '—')}
+          ${o.prox_responsavel ? '<br><small>quem: ' + esc(o.prox_responsavel) + '</small>' : ''}
+          ${o.encaminhado_para ? '<br><small>encaminhado: ' + esc(o.encaminhado_para) + '</small>' : ''}</p></div>
+        ${o.foto_arquivo ? `<div class="bloco"><h4>Foto</h4><img class="ficha-foto" src="/foto/${esc(o.foto_arquivo)}" alt="foto da ocorrência"></div>` : ''}
+      </div></div>`;
+  }).join('') || '<div class="vazio">Nenhuma ocorrência nessa situação.</div>';
+
+  document.querySelectorAll('.ficha-cab').forEach(c => c.onclick = ev => {
+    if (ev.target.dataset.resolver) return;
+    c.parentElement.classList.toggle('aberta');
+  });
+  document.querySelectorAll('[data-resolver]').forEach(b => b.onclick = async ev => {
+    ev.stopPropagation();
+    const n = b.dataset.resolver;
+    if (!confirm('Marcar ' + n + ' como resolvida?')) return;
+    const r = await fetch('/api/gestor/ocorrencia/' + n + '/resolver', { method: 'POST' });
+    if (r.ok) carregarOcorrencias();
+    else alert('Não foi possível resolver essa ocorrência.');
+  });
+}
+$('o-situacao').onchange = carregarOcorrencias;
+
+/* --------------------------------------------------------- experiencia */
+async function carregarExperiencia() {
+  const r = await fetch('/api/gestor/experiencia');
+  if (!r.ok) return;
+  const d = await r.json();
+  const cor = n => n === null ? '' : (n >= 50 ? '' : 'num-alerta');
+
+  $('cartoes-exp').innerHTML = `
+    <div class="cartao"><div class="num ${cor(d.nps)}">${d.nps === null ? '—' : d.nps}</div>
+      <div class="rot">NPS das visitas</div></div>
+    <div class="cartao"><div class="num">${d.media === null ? '—' : d.media}</div>
+      <div class="rot">nota média</div></div>
+    <div class="cartao"><div class="num">${d.total}</div>
+      <div class="rot">clientes ouvidos</div></div>`;
+
+  document.querySelector('#tab-exp tbody').innerHTML = d.por_etapa.map(e => `
+    <tr><td data-label="Etapa"><b>${esc(e.exp_etapa || '—')}</b></td>
+      <td data-label="Respostas" class="num">${e.n}</td>
+      <td data-label="Média" class="num"><b>${e.media}</b></td>
+      <td data-label="Promotores" class="num">${e.promotores}</td>
+      <td data-label="Detratores" class="num">${e.detratores}</td></tr>`).join('')
+    || '<tr><td colspan="5" class="explica">Nenhuma resposta ainda.</td></tr>';
+
+  $('lista-verbatim').innerHTML = d.comentarios.map(c => `
+    <div class="ficha"><div class="ficha-cab">
+      <div><b>${esc(c.cliente_nome)}</b>
+        <div class="sub">${esc(c.exp_etapa || '—')} · ${dataBR(c.recebido_em)}</div>
+        <p style="margin:8px 0 0;font-size:.92rem">"${esc(c.exp_comentario)}"</p></div>
+      <div class="ficha-selos"><span class="selo ${c.exp_nota >= 9 ? 'forte' : c.exp_nota <= 6 ? 'pendente' : 'media'}">nota ${c.exp_nota}</span></div>
+    </div></div>`).join('') || '<div class="vazio">Nenhum comentário registrado.</div>';
+}
