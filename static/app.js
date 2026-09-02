@@ -216,15 +216,24 @@ function montarExperiencia(tipo) {
 /* Voz do Cliente E a pesquisa: avalia os processos da empresa, nao so uma
    etapa. NPS obrigatorio; cada processo e opcional (pode nao se aplicar). */
 function montarPesquisaCompleta(box) {
-  const linhas = (CFG.processos_csat || []).map((proc, i) => `
-    <div class="proc">
-      <div class="proc-nome">${esc(proc)}</div>
-      <div class="proc-notas" data-proc="${esc(proc)}">
+  const linhas = (CFG.processos_csat || []).map((p, i) => {
+    const proc = typeof p === 'string' ? { item: p } : p;
+    const unidades = proc.unidades
+      ? `<select class="unidade-proc oculto" data-unidade="${esc(proc.item)}">
+           <option value="">qual expedição?</option>
+           ${proc.unidades.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('')}
+         </select>` : '';
+    return `<div class="proc">
+      <div class="proc-nome">${esc(proc.item)}
+        ${proc.condicional ? `<small class="dica">${esc(proc.condicional)}</small>` : ''}</div>
+      <div class="proc-notas" data-proc="${esc(proc.item)}">
         ${Array.from({ length: 11 }, (_, n) =>
           `<button type="button" class="nota-min" data-n="${n}">${n}</button>`).join('')}
         <button type="button" class="nota-min pular" data-n="">n/a</button>
       </div>
-    </div>`).join('');
+      ${unidades}
+    </div>`;
+  }).join('');
 
   box.innerHTML = `
     <fieldset class="bloco-exp">
@@ -263,6 +272,9 @@ function montarPesquisaCompleta(box) {
       linha.querySelectorAll('.nota-min').forEach(x => x.classList.remove('escolhida'));
       b.classList.add('escolhida');
       linha.dataset.nota = b.dataset.n;
+      // a expedicao so pergunta qual unidade depois que houve nota
+      const sel = linha.parentNode.querySelector('.unidade-proc');
+      if (sel) sel.classList.toggle('oculto', !b.dataset.n);
     }));
   delete box.dataset.nota;
 }
@@ -281,7 +293,11 @@ function lerExperiencia() {
   }
   box.querySelectorAll('.proc-notas').forEach(linha => {
     if (!linha.dataset.nota) return;              // n/a ou nao respondido
-    respostas.push({ etapa: linha.dataset.proc, nota: Number(linha.dataset.nota) });
+    const sel = linha.parentNode.querySelector('.unidade-proc');
+    respostas.push({
+      etapa: linha.dataset.proc, nota: Number(linha.dataset.nota),
+      unidade: sel ? (sel.value || null) : null,
+    });
   });
   const obs = ($('f-obs-pesquisa') || {}).value;
   if (obs && respostas.length) respostas[0].comentario =
@@ -491,6 +507,12 @@ $('form-ficha').addEventListener('submit', async ev => {
   const notaExp = boxExp.dataset.nota;
   if (tipoAtual !== 'prospeccao' && notaExp === undefined)
     erros.push('Dê a nota da experiência do cliente (0 a 10).');
+
+  boxExp.querySelectorAll('.unidade-proc').forEach(sel => {
+    const linha = sel.parentNode.querySelector('.proc-notas');
+    if (linha && linha.dataset.nota && !sel.value)
+      erros.push('Informe de qual expedição é a nota (Imperatriz, Santa Inês ou Ananindeua).');
+  });
 
   const achado = CFG.clientes.find(c => c.nome === cliente);
   const ficha = {

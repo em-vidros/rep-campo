@@ -185,3 +185,5 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .nota-min.pular{font-size:.62rem;color:var(--cinza);background:#f0eeea}
 .nota-min.escolhida{background:var(--verde);color:#fff;border-color:var(--verde)}
 @media (max-width:420px){ .proc-notas{grid-template-columns:repeat(6,1fr)} }
+.proc-nome .dica{display:inline;margin-left:6px;font-size:.68rem}
+.unidade-proc{margin-top:6px;padding:9px 10px;font-size:.85rem}

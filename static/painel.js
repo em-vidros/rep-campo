@@ -284,6 +284,22 @@ async function carregarExperiencia() {
   document.querySelector('#tab-csat tbody').innerHTML = linhas(d.csat, 'Satisfeitos');
   document.querySelector('#tab-ces tbody').innerHTML = linhas(d.ces, 'Acharam fácil');
 
+  // as tres expedicoes sao operacoes diferentes - a nota sai separada
+  const boxExp = $('bloco-expedicao');
+  if (boxExp) {
+    boxExp.innerHTML = (d.expedicao || []).length ? `
+      <h3 style="margin-top:24px">Atendimento da expedição, por unidade</h3>
+      <div class="tabela-rolagem"><table>
+        <thead><tr><th>Expedição</th><th class="num">Respostas</th>
+          <th class="num">Média</th><th class="num">Satisfeitos</th></tr></thead>
+        <tbody>${d.expedicao.map(e => `<tr>
+          <td data-label="Expedição"><b>${esc(e.unidade)}</b></td>
+          <td data-label="Respostas" class="num">${e.n}</td>
+          <td data-label="Média" class="num"><b>${e.media}</b></td>
+          <td data-label="Satisfeitos" class="num">${e.bons}</td></tr>`).join('')}
+        </tbody></table></div>` : '';
+  }
+
   const selo = m => m === 'nps' ? 'NPS' : m === 'ces' ? 'CES' : 'CSAT';
   $('lista-verbatim').innerHTML = d.comentarios.map(c => `
     <div class="ficha"><div class="ficha-cab">

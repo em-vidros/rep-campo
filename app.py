@@ -77,15 +77,17 @@ RESPONSAVEIS = {
 
 # Etapas da jornada de compra - o que a pesquisa de experiencia avalia.
 ETAPAS_JORNADA = [
-    "Cotacao e orcamento",
+    "Relacionamento geral",
     "Preco e condicao",
-    "Prazo prometido",
-    "Producao e acabamento",
+    "Prazo de producao",
+    "Prazo de entrega",
     "Entrega",
     "Qualidade do produto",
-    "Pos-venda e resolucao de problema",
-    "Relacionamento geral",
+    "Pos-venda e resolucao de problemas",
+    "Atendimento comercial",
+    "Atendimento da expedicao",
 ]
+
 
 # Cada etapa da jornada tem a metrica certa. Misturar as tres e chamar tudo
 # de NPS produz media com nome errado - e contamina o NPS relacional da
@@ -95,15 +97,20 @@ ETAPAS_JORNADA = [
 #   CES  = esforco do cliente ("foi facil resolver?"), melhor em pos-venda
 METRICA_POR_ETAPA = {
     "Relacionamento geral": "nps",
-    "Pos-venda e resolucao de problema": "ces",
-    "Cotacao e orcamento": "csat",
+    "Pos-venda e resolucao de problemas": "ces",
+    "Pos-venda e resolucao de problema": "ces",     # nome antigo, ja gravado
     "Preco e condicao": "csat",
-    "Prazo prometido": "csat",
-    "Producao e acabamento": "csat",
+    "Prazo de producao": "csat",
+    "Prazo de entrega": "csat",
+    "Prazo prometido": "csat",                      # nome antigo
+    "Producao e acabamento": "csat",                # nome antigo
     "Entrega": "csat",
     "Qualidade do produto": "csat",
     "Atendimento comercial": "csat",
+    "Atendimento da expedicao": "csat",
+    "Cotacao e orcamento": "csat",                  # nome antigo
 }
+
 
 # Corte de cada metrica na regua unica de 0 a 10 (o REP nao decora escalas).
 NPS_PROMOTOR, NPS_DETRATOR = 9, 6
@@ -112,9 +119,9 @@ CES_FACIL = 8
 
 # A pergunta muda conforme o tipo de visita - pesquisa pertinente a situacao.
 PERGUNTA_EXPERIENCIA = {
-    "comercial":    ("Cotacao e orcamento", "Como foi a ultima cotacao que fizemos pra voce?"),
+    "comercial":    ("Atendimento comercial", "Como voce avalia o nosso atendimento comercial?"),
     "cordialidade": ("Relacionamento geral", "De 0 a 10, o quanto recomendaria a EM Vidros?"),
-    "tecnica":      ("Pos-venda e resolucao de problema", "De 0 a 10, o quanto foi FACIL resolver esse problema com a gente?"),
+    "tecnica":      ("Pos-venda e resolucao de problemas", "De 0 a 10, o quanto foi FACIL resolver esse problema com a gente?"),
     "prospeccao":   ("Relacionamento geral", "O que te faria comprar da EM Vidros?"),
     "preco":        ("Preco e condicao", "Como avalia nosso preco frente ao prazo e a entrega?"),
     "voz":          ("Relacionamento geral", "De 0 a 10, o quanto recomendaria a EM Vidros?"),
@@ -150,15 +157,22 @@ TIPOS_EVIDENCIA = [
 # A visita "Voz do cliente" E a pesquisa - por isso avalia os processos da
 # empresa inteiros, e nao so uma etapa como as demais visitas.
 PROCESSOS_CSAT = [
-    "Cotacao e orcamento",
-    "Preco e condicao",
-    "Prazo prometido",
-    "Producao e acabamento",
-    "Qualidade do produto",
-    "Entrega",
-    "Pos-venda e resolucao de problema",
-    "Atendimento comercial",
+    {"item": "Preco e condicao"},
+    {"item": "Prazo de producao"},
+    {"item": "Prazo de entrega"},
+    {"item": "Entrega"},
+    {"item": "Qualidade do produto"},
+    {"item": "Pos-venda e resolucao de problemas"},
+    {"item": "Atendimento comercial"},
+    # Nem todo cliente retira no balcao - por isso condicional. E as tres
+    # expedicoes sao operacoes diferentes, entao a nota guarda qual foi.
+    {"item": "Atendimento da expedicao",
+     "condicional": "So se o cliente retira na expedicao",
+     "unidades": ["Imperatriz", "Santa Ines", "Ananindeua"]},
 ]
+
+EXPEDICOES = ["Imperatriz", "Santa Ines", "Ananindeua"]
+
 
 # NPS cansa se perguntado toda visita. CSAT e CES podem ser sempre.
 DIAS_MINIMOS_ENTRE_NPS = 90
@@ -276,6 +290,7 @@ SCHEMA = {
             metrica TEXT NOT NULL,
             nota INTEGER NOT NULL,
             comentario TEXT,
+            unidade TEXT,
             registrado_em TEXT NOT NULL,
             usuario_login TEXT
         )""",
@@ -341,6 +356,11 @@ SCHEMA = {
 
 # colunas adicionadas depois da v1 entram aqui (migracao idempotente)
 COLUNAS_EXTRA = {
+    # a tabela ja existia sem esta coluna; CREATE TABLE IF NOT EXISTS nao
+    # adiciona coluna nova - por isso a migracao explicita
+    "experiencia": [
+        ("unidade", "TEXT"),
+    ],
     "fichas": [
         ("app_versao", "TEXT"),
         # v2 (02/09/2026)
@@ -554,6 +574,7 @@ def api_bootstrap():
         "responsaveis": RESPONSAVEIS,
         "cesta_preco": CESTA_PRECO,
         "processos_csat": PROCESSOS_CSAT,
+        "expedicoes": EXPEDICOES,
         "tipos_evidencia": TIPOS_EVIDENCIA,
         "max_anexos": MAX_ANEXOS,
         "etapas_jornada": ETAPAS_JORNADA,
@@ -789,12 +810,13 @@ def api_receber_fichas():
                 continue
             if not et or not (0 <= nt <= 10):
                 continue
+            uni = str(resp.get("unidade") or "")[:40] or None
             db.execute("""INSERT INTO experiencia (ficha_uuid, cliente_codigo,
-                cliente_nome, etapa, metrica, nota, comentario, registrado_em,
-                usuario_login) VALUES (?,?,?,?,?,?,?,?,?)""",
+                cliente_nome, etapa, metrica, nota, comentario, unidade,
+                registrado_em, usuario_login) VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (uuid_f, str(ficha.get("cliente_codigo") or "")[:40] or None,
                  cliente_nome, et, METRICA_POR_ETAPA.get(et, "csat"), nt,
-                 str(resp.get("comentario") or "")[:1200] or None,
+                 str(resp.get("comentario") or "")[:1200] or None, uni,
                  _agora(), session["login"]))
 
         _salvar_anexos(uuid_f, ficha.get("anexos"), db)
@@ -1117,7 +1139,14 @@ def api_gestor_experiencia():
         " AND comentario IS NOT NULL AND comentario <> '' "
         "ORDER BY nota ASC, registrado_em DESC LIMIT 40", args)]
 
+    expedicao = [dict(r) for r in db.execute(
+        "SELECT unidade, COUNT(*) n, ROUND(AVG(nota),1) media, "
+        "SUM(CASE WHEN nota >= ? THEN 1 ELSE 0 END) bons " + base +
+        " AND etapa = 'Atendimento da expedicao' AND unidade IS NOT NULL "
+        "GROUP BY unidade ORDER BY media ASC", [CSAT_SATISFEITO] + args)]
+
     return jsonify({
+        "expedicao": expedicao,
         "nps": nps, "csat": bloco("csat", CSAT_SATISFEITO),
         "ces": bloco("ces", CES_FACIL), "comentarios": comentarios,
         "clientes_ouvidos": db.execute(
