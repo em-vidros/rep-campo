@@ -243,8 +243,15 @@ estrangeira.
 
 ### Conversão do SQL
 
-**Todo `?` vira `%s`.** São 52 ocorrências no arquivo, incluindo as de dentro dos
+**Todo `?` de SQL vira `%s`.** São 98 no arquivo, incluindo os de dentro dos
 `filtros.append(...)`.
+
+Não faça busca e troca cega. O arquivo tem 110 sinais de interrogação, e 12 deles
+não são placeholder. Sete estão no texto das perguntas da pesquisa, nas linhas 93
+a 120, e virariam `recomendaria%s` na tela do cliente. Um está na linha 375, no
+`return request.remote_addr or "?"`, que é o valor de reserva da chave do
+bloqueio, não SQL. O da linha 821 monta os placeholders da cobertura e some junto
+com o `marcadores`, na troca por `ANY`. Converta consulta por consulta.
 
 **Formatação de string com `%` colide com o placeholder.** Depois da troca acima,
 um `"SELECT ... %s ..." % onde` tenta substituir o placeholder junto com a parte
