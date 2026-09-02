@@ -93,15 +93,18 @@
         </label>
         <div class="dupla">
           <label>Quem faz
-            <select id="f-passo-resp"><option value=""></option></select>
+            <input id="f-passo-resp" list="lista-responsaveis" autocomplete="off"
+                   placeholder="escolha ou digite o nome">
           </label>
           <label>Quando
             <input id="f-passo-data" type="date">
           </label>
         </div>
         <label id="wrap-encaminhado">Encaminhar para
-          <select id="f-encaminhado"><option value=""></option></select>
+          <input id="f-encaminhado" list="lista-responsaveis" autocomplete="off"
+                 placeholder="escolha ou digite o nome">
         </label>
+        <datalist id="lista-responsaveis"></datalist>
       </fieldset>
 
       <div id="bloco-experiencia"></div>

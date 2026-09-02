@@ -446,10 +446,13 @@ $('f-cliente').addEventListener('input', ev => {
       <div class="cc-linha"><span>Comprou 12m</span><b>${brl(c.vol_12m)}</b></div>`;
     cartao.classList.remove('oculto');
     if (c.cidade && !$('f-municipio').value) $('f-municipio').value = c.cidade;
-    if (c.vendedor) {
-      const opt = [...$('f-encaminhado').options].find(o =>
-        c.vendedor.toLowerCase().startsWith(o.value.toLowerCase().split(' ')[0]) && o.value);
-      if (opt) $('f-encaminhado').value = opt.value;   // sugere o vendedor da carteira
+    if (c.vendedor && !$('f-encaminhado').value) {
+      const primeiro = c.vendedor.trim().split(/\s+/)[0].toLowerCase();
+      const dl = $('lista-responsaveis');
+      const casa = dl && [...dl.options].find(o =>
+        o.value.toLowerCase().startsWith(primeiro));
+      // sugere quem cuida do cliente na carteira; o REP pode trocar digitando
+      $('f-encaminhado').value = casa ? casa.value : c.vendedor.split(/\s+/)[0];
     }
   } else {
     cartao.classList.add('oculto');
@@ -513,16 +516,14 @@ async function carregarCfg() {
   $('lista-municipios').innerHTML = (CFG.municipios || [])
     .map(m => `<option value="${esc(m)}">`).join('');
 
-  // quem executa o proximo passo: pessoas e areas reais, nao texto livre
+  // quem executa o proximo passo: sugere pessoas e areas reais, mas aceita
+  // nome digitado - sempre vai faltar alguem na lista (terceiro, motorista...)
   const grupos = CFG.responsaveis || {};
-  const opcoes = '<option value=""></option>' + Object.entries(grupos)
-    .map(([grupo, nomes]) => `<optgroup label="${esc(grupo)}">` +
-      nomes.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('') +
-      '</optgroup>').join('');
-  ['f-passo-resp', 'f-encaminhado'].forEach(id => {
-    const el = $(id);
-    if (el) el.innerHTML = opcoes;
-  });
+  const nomes = Object.entries(grupos).flatMap(([grupo, lista]) =>
+    lista.map(n => ({ nome: n, grupo })));
+  const dl = $('lista-responsaveis');
+  if (dl) dl.innerHTML = nomes
+    .map(x => `<option value="${esc(x.nome)}">${esc(x.grupo)}</option>`).join('');
 }
 
 function recuperarRascunho() {
