@@ -993,6 +993,18 @@ def api_gestor_experiencia():
     })
 
 
+# --------------------------------------------------------------------------
+# Conta e usuarios
+# --------------------------------------------------------------------------
+SENHA_MIN = 8
+
+
+def _hash(senha):
+    # pbkdf2 explicito: o default do Werkzeug 3 e scrypt, ausente em builds
+    # do Python sem OpenSSL completo (caso do python do macOS).
+    return generate_password_hash(senha, method="pbkdf2:sha256")
+
+
 @app.route("/conta", methods=["GET", "POST"])
 @login_obrigatorio
 def conta():
