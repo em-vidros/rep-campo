@@ -1,10 +1,13 @@
 # Migração do REP Campo para Vercel e Neon
 
+**Esta migração já foi feita, em 02/09/2026.** O passo a passo de publicar está
+no `PUBLICAR.md`, e é ele que você segue. Este documento fica como o registro do
+que foi mudado e por quê.
+
 Escrito pela TI em 02/09/2026, a pedido do Henrique, contra o commit `7f3dc5c`,
-com o `app.py` em 1.570 linhas. Os 169 números de linha citados aqui foram
-conferidos por script contra o arquivo. Depois de cada push seu eles saem do
-lugar, e o `verificar_citacoes.py`, na raiz do repositório, reencontra o código
-citado e reescreve os números. Rode ele antes de confiar em qualquer linha daqui.
+com o `app.py` em 1.570 linhas. Os 169 números de linha citados aqui apontam para
+esse commit, não para o código de hoje. Para ver um trecho como ele estava,
+`git show 7f3dc5c:app.py`.
 
 Quem executa a migração é o Claude do Ricardo.
 

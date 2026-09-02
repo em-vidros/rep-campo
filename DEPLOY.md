@@ -1,5 +1,11 @@
 # Runbook de deploy — REP Campo
 
+> **Decidido em 02/09/2026: o app não vai para o servidor.** O bloqueio 1 abaixo,
+> o certificado, não tem prazo de solução, e é ele que impede GPS e offline. O app
+> foi para a Vercel, com o banco no Neon. O passo a passo de publicar está no
+> `PUBLICAR.md`. Este arquivo fica como o registro do porquê, e continua valendo
+> como diagnóstico do servidor.
+
 > Criado em 27/08/2026. **Nada foi executado em produção.**
 > Regra da casa: produção só com backup e rollback documentados, e fora do
 > horário comercial.

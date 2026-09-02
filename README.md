@@ -72,7 +72,8 @@ automático com pedido do ERP. Ver §11 do manual.
 
 ## Stack
 
-Flask + SQLite + PWA em JS puro (sem framework, sem build).
+Flask + Postgres no Neon + PWA em JS puro (sem framework, sem build).
+Publicado na Vercel. Para publicar, veja o `PUBLICAR.md`.
 Mesmo padrão do painel de metas e do ERP próprio.
 
 ```

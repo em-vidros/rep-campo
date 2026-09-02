@@ -15,29 +15,24 @@ VENV="$TRAB/venv"
 echo "[1/5] preparando pasta de trabalho em $TRAB"
 mkdir -p "$TRAB"
 # o banco e as fotos NAO sao sobrescritos - so o codigo
-rsync -a --exclude 'dados/rep_campo.db' --exclude 'dados/secret.key' \
-      --exclude 'dados/fotos' --exclude 'venv' "$ORIGEM/" "$TRAB/"
-mkdir -p "$TRAB/dados/fotos"
+rsync -a --exclude 'venv' "$ORIGEM/" "$TRAB/"
 
 echo "[2/5] ambiente Python"
 if [ ! -x "$VENV/bin/python" ]; then
   python3 -m venv "$VENV"
   "$VENV/bin/pip" install --quiet --upgrade pip
-  "$VENV/bin/pip" install --quiet flask
+  "$VENV/bin/pip" install --quiet -r "$ORIGEM/requirements.txt"
 fi
 
-echo "[3/5] banco e carteira"
-if [ ! -f "$TRAB/dados/rep_campo.db" ]; then
-  cd "$TRAB" && "$VENV/bin/python" -c "import app" >/dev/null   # cria o schema
-  # a carteira mora no Drive; le de la e grava no banco local
-  REP_DB="$TRAB/dados/rep_campo.db" "$VENV/bin/python" "$ORIGEM/importar_carteira.py"
-  echo
-  echo ">> Nenhum usuario existe ainda. Crie o seu:"
-  echo "   REP_DB=$TRAB/dados/rep_campo.db $VENV/bin/python $ORIGEM/criar_usuario.py <login> \"<Nome>\" rep"
-  echo
-else
-  echo "     banco ja existe - preservado"
+echo "[3/5] banco"
+if [ ! -f "$TRAB/.env" ]; then
+  echo "     [--] falta o .env com DATABASE_URL, BLOB_READ_WRITE_TOKEN e REP_SECRET_KEY."
+  echo "          Veja o PUBLICAR.md. Sem ele o app nao sobe."
+  exit 1
 fi
+# O banco e o mesmo Neon de producao. Para brincar sem estragar dado real, crie um
+# branch no painel do Neon e troque a DATABASE_URL do .env.
+cd "$TRAB" && "$VENV/bin/python" setup_db.py
 
 IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "")
 echo "[4/5] endereco"
@@ -51,4 +46,5 @@ echo
 
 echo "[5/5] subindo (ctrl+C para parar)"
 cd "$TRAB"
-REP_DB="$TRAB/dados/rep_campo.db" PORT=8010 exec "$VENV/bin/python" app.py
+# sem HTTPS no teste local o cookie de sessao com Secure nunca chega de volta
+REP_INSECURE_COOKIE=1 PORT=8010 exec "$VENV/bin/python" app.py
