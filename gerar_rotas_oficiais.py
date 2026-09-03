@@ -7,40 +7,11 @@ A planilha e a fonte da verdade. Rodar de novo sempre que ela for atualizada -
 nunca editar rotas_oficiais.py na mao.
 """
 import sys
-import unicodedata
-import re
 from datetime import date
 
 import openpyxl
 
-
-# A planilha e a carteira escrevem a mesma cidade de jeitos diferentes:
-# abreviam o estado ("Campestre do MA"), abreviam titulo ("Gov. Edison Lobao")
-# e tem erro de digitacao ("Araguaiina"). Normalizar os dois lados evita que a
-# cidade caia fora do mapa por causa da grafia.
-EXPANSOES = [
-    (r"\bdo ma\b", "do maranhao"), (r"\bdo to\b", "do tocantins"),
-    (r"\bdo pa\b", "do para"), (r"\bdo pi\b", "do piaui"),
-    (r"\bgov\.?\b", "governador"), (r"\bpres\.?\b", "presidente"),
-    (r"\bsto\.?\b", "santo"), (r"\bsta\.?\b", "santa"),
-]
-
-# erros de digitacao conhecidos da planilha
-CORRECOES = {
-    "araguaiina": "araguaina",
-    "acailandia": "acailandia",
-}
-
-
-def chave(cidade):
-    t = unicodedata.normalize("NFKD", str(cidade or "")).encode("ascii", "ignore").decode()
-    t = t.split("/")[0]
-    t = re.sub(r"[-_.]+", " ", t).lower()
-    t = re.sub(r"\s+", " ", t).strip()
-    for padrao, troca in EXPANSOES:
-        t = re.sub(padrao, troca, t)
-    t = re.sub(r"\s+", " ", t).strip()
-    return CORRECOES.get(t, t)
+from rep_campo.dominio.texto import chave_cidade as chave
 
 
 def main():

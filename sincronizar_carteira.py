@@ -30,8 +30,10 @@ sys.path.insert(0, BASE_DIR)
 
 import psycopg
 
-import importar_carteira as base   # reaproveita leitura, curva ABC e municipios
-import rotas_oficiais
+import importar_carteira as base   # reaproveita leitura de CSV/JSON legada
+from rep_campo.aplicacao.carteira import corrigir_pela_planilha, diff
+from rep_campo.infra.alertas import avisar
+from rep_campo.infra.db import agora as _agora
 
 SQL_UPSERT = """
     INSERT INTO clientes (codigo, nome, cidade, rota, tabela, vendedor,
@@ -76,43 +78,6 @@ CARTEIRA_TOKEN = os.environ.get("CARTEIRA_TOKEN")
 # se nao passar - alerta que toca todo dia vira ruido e para de ser lido.
 TENTATIVAS = 4
 ESPERA = [30, 120, 300]          # segundos entre uma tentativa e a seguinte
-
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT = os.environ.get("TELEGRAM_CHAT_ID")
-N8N_WEBHOOK = os.environ.get("SYNC_ALERTA_WEBHOOK")
-
-
-def avisar(texto):
-    """Manda o alerta. Tenta o Telegram direto; se nao houver token, o n8n."""
-    enviado = False
-    if TELEGRAM_TOKEN and TELEGRAM_CHAT:
-        try:
-            corpo = json.dumps({"chat_id": TELEGRAM_CHAT, "text": texto,
-                                "parse_mode": "HTML"}).encode()
-            req = urllib.request.Request(
-                "https://api.telegram.org/bot%s/sendMessage" % TELEGRAM_TOKEN,
-                data=corpo, headers={"Content-Type": "application/json"})
-            urllib.request.urlopen(req, timeout=20).read()
-            enviado = True
-        except Exception as e:
-            print("[--] Telegram falhou: %s" % str(e)[:120])
-    if not enviado and N8N_WEBHOOK:
-        try:
-            req = urllib.request.Request(
-                N8N_WEBHOOK, data=json.dumps({"texto": texto}).encode(),
-                headers={"Content-Type": "application/json"})
-            urllib.request.urlopen(req, timeout=20).read()
-            enviado = True
-        except Exception as e:
-            print("[--] webhook falhou: %s" % str(e)[:120])
-    if not enviado:
-        print("[--] SEM CANAL DE ALERTA CONFIGURADO. A mensagem seria:")
-        print(texto)
-    return enviado
-
-
-def _agora():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 def ler_do_painel(url):
@@ -160,28 +125,9 @@ def sincronizar(args):
         print("[--] a fonte devolveu ZERO cliente. Abortando para nao inativar a base.")
         sys.exit(1)
 
-    # A planilha oficial manda na rota. O campo que vem da carteira esta
-    # incompleto e as vezes divergente - Araguaina chegava sem rota, e clientes
-    # de Ananindeua vinham como Belem.
-    corrigidas, sem_mapa, da_raposa = {}, set(), set()
-    for c in clientes:
-        cidade = c.get("cidade")
-        if rotas_oficiais._chave(c.get("rota")) in ("sem rota", ""):
-            c["rota"] = ""
-        if not rotas_oficiais.e_da_base_itz(cidade):
-            if cidade:
-                (da_raposa if rotas_oficiais.e_da_raposa(cidade) else sem_mapa).add(cidade)
-            continue
-        oficial = rotas_oficiais.rota_da_cidade(cidade) or ""
-        atual = (c.get("rota") or "").strip()
-        if rotas_oficiais._chave(atual) != rotas_oficiais._chave(oficial):
-            de = atual or "(sem rota)"
-            para = oficial or "(sem rota)"
-            corrigidas[(de, para)] = corrigidas.get((de, para), 0) + 1
-            c["rota"] = oficial
-        c["tabela"] = rotas_oficiais.tabela_da_cidade(cidade) or c.get("tabela")
-
-    clientes = base.curva_abc(clientes)
+    clientes, mapa_info = corrigir_pela_planilha(clientes)
+    corrigidas, sem_mapa, da_raposa = (mapa_info["corrigidas"], mapa_info["sem_mapa"],
+                                       mapa_info["da_raposa"])
     print("[fonte] %s" % fonte)
     print("[fonte] %d cliente(s)" % len(clientes))
     if corrigidas:
@@ -211,27 +157,11 @@ def sincronizar(args):
                 "FROM clientes")
     atuais = {r[0]: r for r in cur.fetchall()}
 
-    novos = alterados = reativados = 0
+    novos, alterados, reativados, sumiram = diff(atuais, clientes)
     agora = _agora()
-    for c in clientes:
-        a = atuais.get(c["codigo"])
-        if a is None:
-            novos += 1
-        else:
-            mudou = (a[1] != c["nome"] or (a[2] or "") != (c["cidade"] or "")
-                     or (a[3] or "") != (c["rota"] or "")
-                     or (a[4] or "") != (c["vendedor"] or "")
-                     or float(a[5] or 0) != float(c["vol_12m"] or 0)
-                     or (a[6] or "") != (c["curva"] or ""))
-            if mudou:
-                alterados += 1
-            if not a[7]:
-                reativados += 1
-        if not args.simular:
+    if not args.simular:
+        for c in clientes:
             gravar_cliente(cur, c, agora)
-
-    vistos = {c["codigo"] for c in clientes}
-    sumiram = [cod for cod, a in atuais.items() if cod not in vistos and a[7]]
     if sumiram and not args.simular:
         cur.execute("UPDATE clientes SET ativo = 0, atualizado_em = %s "
                     "WHERE codigo = ANY(%s)", (agora, sumiram))

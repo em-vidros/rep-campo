@@ -13,19 +13,7 @@ from datetime import datetime, timezone
 import psycopg
 from werkzeug.security import generate_password_hash
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-
-def carregar_env():
-    caminho = os.path.join(BASE_DIR, ".env")
-    if not os.path.exists(caminho):
-        return
-    for linha in open(caminho, encoding="utf-8"):
-        linha = linha.strip()
-        if not linha or linha.startswith("#") or "=" not in linha:
-            continue
-        chave, valor = linha.split("=", 1)
-        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
+from rep_campo.config import carregar_env
 
 
 def main():

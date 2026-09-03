@@ -15,6 +15,8 @@ import sys
 
 import psycopg
 
+from rep_campo.config import carregar_env
+
 TABELAS = [
     ("usuarios", """
         CREATE TABLE IF NOT EXISTS usuarios (
@@ -211,19 +213,6 @@ COLUNAS = [
     # plano de visita local nao e viagem: mesma estrutura, sem estrada
     "ALTER TABLE viagens ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'viagem'",
 ]
-
-
-def carregar_env():
-    """Le o .env ao lado deste arquivo, sem depender de pacote extra."""
-    caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.exists(caminho):
-        return
-    for linha in open(caminho, encoding="utf-8"):
-        linha = linha.strip()
-        if not linha or linha.startswith("#") or "=" not in linha:
-            continue
-        chave, valor = linha.split("=", 1)
-        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
 
 
 def main():

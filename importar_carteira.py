@@ -16,23 +16,11 @@ import json
 import os
 import psycopg
 import sys
-import re
-import unicodedata
 from datetime import datetime, timezone
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-
-def carregar_env():
-    caminho = os.path.join(BASE_DIR, ".env")
-    if not os.path.exists(caminho):
-        return
-    for linha in open(caminho, encoding="utf-8"):
-        linha = linha.strip()
-        if not linha or linha.startswith("#") or "=" not in linha:
-            continue
-        chave, valor = linha.split("=", 1)
-        os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
+from rep_campo.config import BASE_DIR, carregar_env
+from rep_campo.dominio.carteira import curva_abc
+from rep_campo.dominio.texto import num_carteira as num, sem_acento
 DADOS_CARTEIRA = os.path.abspath(os.path.join(BASE_DIR, "..", "gestao-carteira", "dados"))
 CSV_ITZ = os.path.join(DADOS_CARTEIRA, "carteira_itz_final.csv")
 JSON_RAP = os.path.join(DADOS_CARTEIRA, "carteira_rap_final.json")
@@ -46,20 +34,6 @@ MIGRACAO = {
     "moncao", "igarape do meio", "pindare mirim", "pio xii",
     "alto alegre do pindare",
 }
-
-
-def sem_acento(txt):
-    t = unicodedata.normalize("NFKD", str(txt or "")).encode("ascii", "ignore").decode().lower()
-    t = t.split("/")[0]                 # "Santa Ines/MA" -> "Santa Ines"
-    t = re.sub(r"[-_]+", " ", t)        # "Pindare-Mirim" -> "Pindare Mirim"
-    return re.sub(r"\s+", " ", t).strip()
-
-
-def num(v):
-    try:
-        return float(str(v).replace(".", "").replace(",", ".")) if isinstance(v, str) and "," in str(v) else float(v or 0)
-    except (TypeError, ValueError):
-        return 0.0
 
 
 def ler_itz():
@@ -107,25 +81,6 @@ def ler_migracao():
             "base": "ITZ", "origem": "migracao_01-09-2026",
         })
     return saida
-
-
-def curva_abc(clientes):
-    """A = clientes que somam os primeiros 80% do volume; B = +15%; C = resto.
-
-    Cliente sem volume conhecido (ex.: vindo da carteira Rap, que nao traz
-    'Vol 12m') fica SEM curva - classificar como C seria inventar dado.
-    """
-    com_vol = [c for c in clientes if c["vol_12m"] > 0]
-    sem_vol = [c for c in clientes if c["vol_12m"] <= 0]
-    for c in sem_vol:
-        c["curva"] = None
-    total = sum(c["vol_12m"] for c in com_vol)
-    acum = 0.0
-    for c in sorted(com_vol, key=lambda x: x["vol_12m"], reverse=True):
-        acum += c["vol_12m"]
-        pct = acum / total
-        c["curva"] = "A" if pct <= 0.80 else ("B" if pct <= 0.95 else "C")
-    return com_vol + sem_vol
 
 
 def main():
