@@ -13,8 +13,9 @@ A TI converteu o app em 02/09/2026 e testou contra o Neon e o Blob de verdade,
 não contra imitação. O `teste_fumaca.py` faz 60 verificações e todas passam.
 
 As tabelas já existem no Neon. As três variáveis de ambiente já estão no projeto
-da Vercel. O que falta é você criar o primeiro usuário, carregar a carteira e
-apertar Deploy.
+da Vercel. Os seis usuários e os 1457 clientes da carteira entraram em 02/09/2026,
+então os passos 1 e 2 abaixo já foram dados uma vez. Eles são idempotentes e
+continuam valendo para criar mais gente e recarregar a carteira.
 
 ## Os três passos
 
@@ -46,10 +47,19 @@ clientes no Neon.
 
 ### 3. Publique
 
-Empurre para a `main` no GitHub. A Vercel publica sozinha.
+Empurre para a `main` no GitHub. A Vercel publica sozinha, sem CLI e sem nada a
+rodar no servidor. O endereço é `https://rep-campo.vercel.app`.
 
-Depois abra `/saude`. Ele responde com a contagem de clientes. Se der erro, o
-banco não conectou e nada mais adianta testar.
+Duas conferências depois do push:
+
+```bash
+curl -s https://rep-campo.vercel.app/saude   # {"ok":true,"clientes":1457,...}
+curl -s https://rep-campo.vercel.app/ping    # {"ok":true}
+```
+
+O `/saude` toca o Neon. Se ele der erro, o banco não conectou e nada mais adianta
+testar. O `/ping` não toca em banco nenhum, então responde mesmo com o Neon fora,
+e é dele que o app se serve para saber se tem rede.
 
 ## Testar antes de publicar
 

@@ -5,10 +5,12 @@ App do representante comercial da **base Itz**. PWA (instala no celular),
 
 Instrumento da metodologia descrita em
 [EMVIDROS_REP_RELATORIOS_EVIDENCIAS.md](../EMVIDROS_REP_RELATORIOS_EVIDENCIAS.md).
-Deploy e bloqueios: [DEPLOY.md](docs/DEPLOY.md) · Pedido à TI: [PEDIDO_TI.md](PEDIDO_TI.md).
+Publicar: [PUBLICAR.md](docs/PUBLICAR.md) · Por que saiu do servidor:
+[DEPLOY.md](docs/DEPLOY.md).
 
-> Status: **v1 construída e testada localmente. NÃO está em produção.**
-> Ver "Pré-requisito de infra" antes de planejar o deploy.
+> Status: **em produção em `https://rep-campo.vercel.app`**, com banco no Neon e
+> fotos no Vercel Blob desde 02/09/2026. Publicar é empurrar para a `main`, e a
+> Vercel dispara o deploy sozinha.
 
 ---
 

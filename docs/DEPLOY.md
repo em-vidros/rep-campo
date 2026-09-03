@@ -5,6 +5,10 @@
 > foi para a Vercel, com o banco no Neon. O passo a passo de publicar está no
 > `PUBLICAR.md`. Este arquivo fica como o registro do porquê, e continua valendo
 > como diagnóstico do servidor.
+>
+> **O endereço de produção é `https://rep-campo.vercel.app`.** O `<dominio>` que
+> aparece nos comandos daqui para baixo é do caminho do servidor, que morreu com
+> essa decisão. Nenhum `ssh emhub` deste arquivo funciona hoje.
 
 > Criado em 27/08/2026. **Nada foi executado em produção.**
 > Regra da casa: produção só com backup e rollback documentados, e fora do
