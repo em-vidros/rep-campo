@@ -16,7 +16,8 @@ def conectar(url=None):
     url = url or os.environ.get("DATABASE_URL")
     if not url:
         raise RuntimeError("DATABASE_URL nao definida nas variaveis de ambiente")
-    return psycopg.connect(url, row_factory=dict_row, prepare_threshold=None)
+    return psycopg.connect(url, row_factory=dict_row, prepare_threshold=None,
+                            connect_timeout=20)
 
 
 def get_db():
