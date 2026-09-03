@@ -3,7 +3,7 @@
 Cria ou atualiza um usuario do REP Campo.
 A senha NUNCA fica em texto claro: e pedida no terminal e guardada como hash.
 
-Uso:  python scripts/criar_usuario.py <login> "<Nome>" [rep|gestor]
+Uso:  python scripts/criar_usuario.py <login> "<Nome>" [rep|gestor|admin]
 """
 import getpass
 import os
@@ -25,8 +25,10 @@ def main():
     login = sys.argv[1].strip().lower()
     nome = sys.argv[2].strip()
     papel = (sys.argv[3] if len(sys.argv) > 3 else "rep").strip().lower()
-    if papel not in ("rep", "gestor"):
-        print("[--] papel deve ser 'rep' ou 'gestor'")
+    # admin entrou em 02/09: gestor faz todo o operacional, admin tambem
+    # administra usuarios e importa dados
+    if papel not in ("rep", "gestor", "admin"):
+        print("[--] papel deve ser 'rep', 'gestor' ou 'admin'")
         sys.exit(1)
 
     senha = os.environ.get("REP_SENHA") or getpass.getpass("Senha para %s: " % login)
