@@ -45,6 +45,12 @@ def foto(nome):
                     headers={"Cache-Control": "private, max-age=3600"})
 
 
+@bp.route("/ping")
+def ping():
+    """Sonda de rede do app. Nao toca no banco: a pergunta e so se ha rede."""
+    return jsonify({"ok": True}), 200, {"Cache-Control": "no-store"}
+
+
 @bp.route("/saude")
 def saude():
     try:

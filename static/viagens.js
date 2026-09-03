@@ -14,20 +14,74 @@ function msg(t, erro) {
   setTimeout(() => { $('msg').innerHTML = ''; }, 4000);
 }
 
+/* --------------------------------------------------------------- sem rede */
+// Leitura passa pelo service worker, que devolve a copia da ultima vez que a
+// tela abriu com sinal. Quando nem isso existe, `pegar` volta null e quem
+// chamou escreve na tela o motivo, em vez de deixar em branco.
+// navigator.onLine mente numa pagina aberta pelo cache: diz "online" sem rede
+// nenhuma. Entao quem manda aqui e o que a ultima chamada de verdade mostrou.
+let redeCaiu = false;
+const semRede = () => !navigator.onLine || redeCaiu;
+
+async function pegar(url) {
+  try {
+    const r = await fetch(url);
+    redeCaiu = r.headers.get('X-Rep-Cache') === '1';
+    marcarConexao();
+    return r.ok ? await r.json() : null;
+  } catch (e) {
+    redeCaiu = true;
+    marcarConexao();
+    return null;
+  }
+}
+
+// Planejar e mudar situacao mexem no banco. Sem rede nao da, e o REP precisa
+// ouvir isso na hora - nao existe fila de viagem como existe de ficha.
+function exigeRede(acao) {
+  if (!semRede()) return true;
+  msg('Sem internet: ' + acao + ' só funciona com sinal. O roteiro que você já '
+      + 'tem continua à vista.', true);
+  return false;
+}
+
+function marcarConexao() {
+  const b = $('faixa-offline');
+  if (b) b.classList.toggle('oculto', !semRede());
+}
+// A pagina aberta pelo cache se acha online e nunca dispara 'online'. Sem a
+// sonda a faixa ficaria na tela depois que o sinal voltasse.
+async function sondarRede() {
+  const antes = redeCaiu;
+  try { await fetch('/ping', { cache: 'no-store' }); redeCaiu = false; }
+  catch (e) { redeCaiu = true; }
+  marcarConexao();
+  if (antes && !redeCaiu) { carregarViagens(); carregarRotas(); }
+}
+setInterval(() => { if (semRede()) sondarRede(); }, 60000);
+
+window.addEventListener('online', () => {
+  redeCaiu = false;
+  marcarConexao();
+  carregarViagens();
+  carregarRotas();
+});
+window.addEventListener('offline', () => { redeCaiu = true; marcarConexao(); });
+
 document.querySelectorAll('.aba').forEach(b => b.onclick = () => {
   document.querySelectorAll('.aba').forEach(x => x.classList.remove('ativa'));
   document.querySelectorAll('.tela').forEach(x => x.classList.remove('ativa'));
   b.classList.add('ativa');
   $('tela-' + b.dataset.tela).classList.add('ativa');
   if (b.dataset.tela === 'lista') carregarViagens();
-carregarRotas();
+  if (b.dataset.tela === 'avulsas') carregarAvulsas();
+  if (b.dataset.tela === 'planejar') carregarRotas();
 });
 
 /* ---------------------------------------------------------------- rotas */
 async function carregarRotas() {
-  const r = await fetch('/api/rotas');
-  if (!r.ok) return;
-  const d = await r.json();
+  const d = await pegar('/api/rotas');
+  if (!d) return;
   ROTAS = d.rotas;
   // avisa sobre cadastro de outra base, sem esconder o problema
   if (d.clientes_fora) {
@@ -132,9 +186,9 @@ async function buscarSugestao() {
   q.set('cidades', [...cidadesMarcadas].join('|'));
   q.set('limite', '120');
   if ($('s-parados').checked) q.set('parados', '1');
-  const r = await fetch('/api/sugestao?' + q);
-  if (!r.ok) return msg('Não foi possível buscar.', true);
-  const d = await r.json();
+  if (!exigeRede('montar a sugestão de clientes')) return;
+  const d = await pegar('/api/sugestao?' + q);
+  if (!d) return msg('Não foi possível buscar.', true);
   sugeridos = d.clientes;
 
   $('lista-sugestao').innerHTML = sugeridos.map((c, i) => `
@@ -177,6 +231,7 @@ $('s-buscar').onclick = buscarSugestao;
 $('btn-criar').onclick = async () => {
   const nome = $('v-nome').value.trim();
   if (!nome) { msg('Dê um nome para a viagem.', true); $('v-nome').focus(); return; }
+  if (!exigeRede('criar viagem')) return;
   const r = await fetch('/api/viagens', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -201,9 +256,14 @@ $('btn-criar').onclick = async () => {
 
 /* ------------------------------------------------------------- viagens */
 async function carregarViagens() {
-  const r = await fetch('/api/viagens');
-  if (!r.ok) return;
-  const d = await r.json();
+  marcarConexao();
+  const d = await pegar('/api/viagens');
+  if (!d) {
+    $('lista-viagens').innerHTML = '<div class="vazio">Sem internet e sem cópia '
+      + 'guardada. Abra esta tela uma vez com sinal e ela passa a funcionar '
+      + 'offline.</div>';
+    return;
+  }
   $('lista-viagens').innerHTML = d.viagens.map(v => `
     <div class="ficha">
       <div class="ficha-cab" data-abrir="${v.id}">
@@ -225,8 +285,12 @@ async function carregarViagens() {
     ficha.classList.toggle('aberta');
     if (!ficha.classList.contains('aberta')) return;
     const id = c.dataset.abrir;
-    const r = await fetch('/api/viagens/' + id);
-    const v = await r.json();
+    const v = await pegar('/api/viagens/' + id);
+    if (!v) {
+      $('corpo-' + id).innerHTML = '<div class="vazio">Sem internet e sem cópia '
+        + 'deste roteiro. Abra a viagem uma vez com sinal.</div>';
+      return;
+    }
     $('corpo-' + id).innerHTML = `
       ${v.observacao ? `<div class="bloco"><h4>Observação</h4><p>${esc(v.observacao)}</p></div>` : ''}
       <div class="bloco"><h4>Roteiro</h4>
@@ -250,6 +314,7 @@ async function carregarViagens() {
     const btnRel = $('corpo-' + id).querySelector('[data-relatorio]');
     if (btnRel) btnRel.onclick = () => verRelatorio(id, $('relatorio-' + id));
     $('corpo-' + id).querySelector('[data-status]').onchange = async ev => {
+      if (!exigeRede('mudar a situação da viagem')) { ev.target.value = v.status; return; }
       await fetch('/api/viagens/' + id, { method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: ev.target.value }) });
@@ -264,9 +329,8 @@ carregarRotas();
 
 /* ------------------------------------------------- relatorio da viagem */
 async function verRelatorio(id, alvo) {
-  const r = await fetch('/api/viagens/' + id + '/relatorio');
-  if (!r.ok) return msg('Não foi possível montar o relatório.', true);
-  const d = await r.json();
+  const d = await pegar('/api/viagens/' + id + '/relatorio');
+  if (!d) return msg('Não foi possível montar o relatório.', true);
   const v = d.viagem;
   const linha = (rot, val) => `<div class="cc-linha"><span>${esc(rot)}</span><b>${val}</b></div>`;
 
@@ -325,9 +389,12 @@ async function verRelatorio(id, alvo) {
 
 /* ------------------------------------------------- visitas sem viagem */
 async function carregarAvulsas() {
-  const r = await fetch('/api/visitas-avulsas');
-  if (!r.ok) return;
-  const d = await r.json();
+  const d = await pegar('/api/visitas-avulsas');
+  if (!d) {
+    $('lista-avulsas').innerHTML = '<div class="vazio">Sem internet e sem cópia '
+      + 'guardada desta tela.</div>';
+    return;
+  }
   $('cartoes-avulsas').innerHTML = `
     <div class="cartao"><div class="num">${d.total}</div><div class="rot">visitas no mês</div></div>
     <div class="cartao"><div class="num">${d.clientes}</div><div class="rot">clientes</div></div>

@@ -5,6 +5,7 @@ from functools import wraps
 from flask import jsonify, redirect, request, session, url_for
 
 from rep_campo.dominio.catalogos import PAPEIS_GESTAO
+from rep_campo.infra import db as dbmod
 
 
 def eh_gestor():
@@ -13,6 +14,25 @@ def eh_gestor():
 
 def eh_admin():
     return session.get("papel") == "admin"
+
+
+def sessao_valida():
+    """Confere no banco quem o cookie diz que e, a cada pedido.
+
+    O cookie vale 30 dias para o REP nao perder o login no meio da rota. Sem
+    esta conferencia, desativar alguem no painel nao tiraria o acesso dele por
+    um mes, e trocar o papel so valeria no proximo login.
+    """
+    if "uid" not in session:
+        return False
+    row = dbmod.get_db().execute(
+        "SELECT papel, ativo FROM usuarios WHERE id = %s", (session["uid"],)
+    ).fetchone()
+    if not row or not row["ativo"]:
+        session.clear()
+        return False
+    session["papel"] = row["papel"]
+    return True
 
 
 def _sem_acesso():
@@ -30,7 +50,7 @@ def _sem_permissao():
 def login_obrigatorio(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
-        if "uid" not in session:
+        if not sessao_valida():
             return _sem_acesso()
         return fn(*a, **kw)
     return wrapper
@@ -39,7 +59,7 @@ def login_obrigatorio(fn):
 def gestor_obrigatorio(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
-        if "uid" not in session:
+        if not sessao_valida():
             return _sem_acesso()
         if not eh_gestor():
             return _sem_permissao()
@@ -50,7 +70,7 @@ def gestor_obrigatorio(fn):
 def admin_obrigatorio(fn):
     @wraps(fn)
     def wrapper(*a, **kw):
-        if "uid" not in session:
+        if not sessao_valida():
             return _sem_acesso()
         if not eh_admin():
             return _sem_permissao()

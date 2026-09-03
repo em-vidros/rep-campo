@@ -673,6 +673,10 @@ girar `REP_SECRET_KEY` no painel da Vercel, o que derruba todo mundo junto. Como
 a rota já abre conexão de qualquer forma, vale conferir `ativo` e `papel` no
 banco dentro do decorador.
 
+> Resolvido em 03/09/2026. O `login_obrigatorio` passou a conferir `ativo` e a
+> reler `papel` no banco a cada pedido, junto com a subida da sessão de 7 para 30
+> dias, que o REP precisa para não perder o login em rota sem sinal.
+
 **Cuidado com cabeçalho de cache.** O `vercel.json` manda `/(.*)` para a função.
 Basta alguém acrescentar uma regra de `headers` com `s-maxage` casando esse mesmo
 padrão para o `/api/bootstrap` de um usuário ser servido a outro pela CDN. Se for

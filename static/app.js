@@ -41,6 +41,13 @@ const LOTE_SYNC = 3;
 let CFG = { clientes: [], municipios: [], relato_min: 200 };
 let tipoAtual = null, fotoDataUrl = null, geo = { lat: null, lon: null, precisao: null };
 
+// navigator.onLine mente na abertura pelo icone sem sinal: o navegador serve a
+// pagina do proprio cache e ainda assim diz "online". Quem manda e o que a
+// ultima chamada de verdade mostrou. O service worker marca com X-Rep-Cache o
+// que saiu do cache em vez de sair do servidor.
+let redeCaiu = false;
+const semRede = () => !navigator.onLine || redeCaiu;
+
 /* ------------------------------------------------------------------- utils */
 const $ = id => document.getElementById(id);
 function uuid() {
@@ -58,6 +65,14 @@ function aviso(msg, erro) {
 }
 const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Mesma regra do servidor (rep_campo/dominio/visitas.py). Fica repetida aqui de
+// proposito: sem ela o Resumo nao teria como se montar com o aparelho offline.
+function nivelEvidencia(temFoto, temGeo, temPasso) {
+  if (temFoto && temGeo) return 'forte';
+  if (temGeo && temPasso) return 'media';
+  return 'leve';
+}
 
 /* -------------------------------------------------------------- campos/tipo */
 const CAMPOS = {
@@ -544,6 +559,8 @@ $('form-ficha').addEventListener('submit', async ev => {
     experiencia: lerExperiencia(),
     anexos: anexos,
     app_versao: VERSAO,
+    _nivel: nivelEvidencia(!!fotoDataUrl, geo.lat !== null && geo.lon !== null,
+                           !!(passo || '').trim()),
   };
 
   await filaSalvar(ficha);
@@ -583,6 +600,8 @@ document.addEventListener('input', ev => {
 /* ----------------------------------------------------------------- sync */
 let sincronizando = false;
 async function sincronizar() {
+  // Nao usa semRede() aqui de proposito: se a rede voltou sem o navegador
+  // avisar, a tentativa e o que descobre. Ela falha rapido e sem custo.
   if (sincronizando || !navigator.onLine) return;
   const fila = await filaPor();
   if (!fila.length) { atualizarStatus(); return; }
@@ -592,6 +611,7 @@ async function sincronizar() {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ fichas: fila.slice(0, LOTE_SYNC) }),
     });
+    redeCaiu = false;
     if (resp.status === 401) { aviso('Sessao expirou. Entre de novo.', true); return; }
     if (!resp.ok) throw new Error('http ' + resp.status);
     const dados = await resp.json();
@@ -619,7 +639,8 @@ async function sincronizar() {
     // Offline nao e erro: a fila continua guardada e tenta de novo. Erro do
     // servidor tem que aparecer, senao o numero da fila fica parado sem
     // explicacao nenhuma na tela.
-    if (navigator.onLine) aviso('Nao consegui enviar agora. Tento de novo em 1 minuto.', true);
+    if (e instanceof TypeError) redeCaiu = true;      // nao saiu do aparelho
+    if (!semRede()) aviso('Nao consegui enviar agora. Tento de novo em 1 minuto.', true);
   } finally {
     sincronizando = false;
     atualizarStatus();
@@ -630,17 +651,27 @@ async function sincronizar() {
 async function atualizarStatus() {
   const fila = await filaPor();
   const pc = $('pt-conexao'), pf = $('pt-fila'), bs = $('btn-sync');
-  if (navigator.onLine) { pc.textContent = 'online'; pc.className = 'pastilha online'; }
-  else { pc.textContent = 'sem internet'; pc.className = 'pastilha offline'; }
+  if (semRede()) { pc.textContent = 'sem internet'; pc.className = 'pastilha offline'; }
+  else { pc.textContent = 'online'; pc.className = 'pastilha online'; }
   if (fila.length) {
     pf.textContent = fila.length + ' na fila';
     pf.className = 'pastilha fila';
     pf.classList.remove('oculto');
-    bs.classList.toggle('oculto', !navigator.onLine);
+    bs.classList.toggle('oculto', semRede());
   } else { pf.classList.add('oculto'); bs.classList.add('oculto'); }
 }
-window.addEventListener('online', () => { atualizarStatus(); sincronizar(); });
-window.addEventListener('offline', atualizarStatus);
+// Quando a pagina abre pelo cache, o navegador ja se acha online e nunca dispara
+// o evento 'online'. Sem esta sonda a pastilha ficaria em "sem internet" para
+// sempre depois que o sinal voltasse.
+async function sondarRede() {
+  try {
+    await fetch('/ping', { cache: 'no-store' });
+    redeCaiu = false;
+  } catch (e) { redeCaiu = true; }
+  await atualizarStatus();
+}
+window.addEventListener('online', () => { redeCaiu = false; atualizarStatus(); sincronizar(); });
+window.addEventListener('offline', () => { redeCaiu = true; atualizarStatus(); });
 $('btn-sync').onclick = sincronizar;
 
 /* ---------------------------------------------------------------- telas */
@@ -729,7 +760,16 @@ async function renderResumo() {
   try {
     const r = await fetch('/api/resumo');
     if (!r.ok) throw new Error();
-    const d = await r.json();
+    desenharResumo(await r.json(), '');
+  } catch (e) {
+    // Sem rede o resumo nao some: ele e refeito com o que esta gravado no
+    // aparelho. Conta a fila junto, que o servidor ainda nem viu.
+    desenharResumo(await resumoLocal(),
+      'Contas feitas no próprio aparelho, sem rede. Entram as suas fichas deste '
+      + 'celular, inclusive as que ainda estão na fila.');
+  }
+
+  function desenharResumo(d, nota) {
     box.innerHTML = `
       <div class="cartao"><div class="num">${d.total}</div><div class="rot">fichas no mes</div></div>
       <div class="cartao"><div class="num">${d.qualidade}%</div><div class="rot">com proximo passo</div></div>
@@ -737,22 +777,47 @@ async function renderResumo() {
       <div class="cartao"><div class="num">${d.municipios}</div><div class="rot">municipios</div></div>`;
     const linhas = Object.entries(d.por_tipo || {}).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v}</td></tr>`).join('');
     const niveis = Object.entries(d.por_nivel || {}).map(([k, v]) => `<tr><td>evidencia ${esc(k)}</td><td>${v}</td></tr>`).join('');
-    det.innerHTML = linhas || niveis ? `<table>${linhas}${niveis}</table>` : '';
-  } catch (e) {
-    box.innerHTML = '<div class="vazio">Resumo indisponivel offline.</div>';
-    det.innerHTML = '';
+    det.innerHTML = (linhas || niveis ? `<table>${linhas}${niveis}</table>` : '')
+      + (nota ? `<p class="explica">${esc(nota)}</p>` : '');
   }
+}
+
+async function resumoLocal() {
+  const mes = new Date().toISOString().slice(0, 7);
+  const fila = await filaPor(), enviadas = await enviadasPor();
+  const todas = [...fila, ...enviadas].filter(f =>
+    !f.recusada && String(f.criado_em_disp || '').slice(0, 7) === mes);
+
+  const conta = (chave, vazio) => todas.reduce((acc, f) => {
+    const k = (f[chave] || '').toString().trim() || vazio;
+    if (k) acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
+  const distintos = chave =>
+    new Set(todas.map(f => (f[chave] || '').toString().trim()).filter(Boolean)).size;
+
+  const comPasso = todas.filter(f => (f.proximo_passo || '').trim()).length;
+  return {
+    mes, total: todas.length, validas: comPasso,
+    qualidade: todas.length ? Math.round(1000.0 * comPasso / todas.length) / 10 : 0.0,
+    por_tipo: conta('tipo'), por_nivel: conta('_nivel', 'leve'),
+    municipios: distintos('municipio'), clientes: distintos('cliente_nome'),
+  };
 }
 
 /* -------------------------------------------------------------- inicializacao */
 async function carregarCfg() {
   try {
     const r = await fetch('/api/bootstrap');
+    // Esta e a primeira chamada de rede da abertura, entao e ela que diz se ha
+    // rede de verdade. Cabecalho posto pelo service worker quando serve o cache.
+    redeCaiu = r.headers.get('X-Rep-Cache') === '1';
     if (r.ok) {
       CFG = await r.json();
       await cacheGravar('cfg', CFG);
     } else throw new Error();
   } catch (e) {
+    if (e instanceof TypeError) redeCaiu = true;
     const c = await cacheLer('cfg');
     if (c && c.valor) CFG = c.valor;
   }
@@ -795,7 +860,10 @@ function recuperarRascunho() {
   await atualizarStatus();
   recuperarRascunho();
   sincronizar();
-  setInterval(sincronizar, 60000);
+  setInterval(async () => {
+    if (semRede()) await sondarRede();
+    sincronizar();
+  }, 60000);
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   }

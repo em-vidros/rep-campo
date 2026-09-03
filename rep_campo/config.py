@@ -32,5 +32,8 @@ def flask_config():
         "SESSION_COOKIE_HTTPONLY": True,
         "SESSION_COOKIE_SAMESITE": "Lax",
         "SESSION_COOKIE_SECURE": os.environ.get("REP_INSECURE_COOKIE") != "1",
-        "PERMANENT_SESSION_LIFETIME": timedelta(days=7),
+        # 30 dias, e nao 7. A sessao so renova quando o app fala com o servidor, e
+        # quem passa uma semana rodando em area sem sinal descobriria a senha
+        # vencida no meio da rota, justo onde nao da para entrar de novo.
+        "PERMANENT_SESSION_LIFETIME": timedelta(days=30),
     }
