@@ -42,13 +42,13 @@
     <div id="passo-tipo">
       <h2>Que tipo de visita?</h2>
       <div class="grade-tipos">
-        <button class="cartao-tipo" data-tipo="comercial"><b>Comercial</b><small>oportunidade de venda</small></button>
-        <button class="cartao-tipo" data-tipo="cordialidade"><b>Cordialidade</b><small>relacionamento</small></button>
-        <button class="cartao-tipo" data-tipo="tecnica"><b>Tecnica</b><small>reclamacao / problema</small></button>
-        <button class="cartao-tipo" data-tipo="prospeccao"><b>Prospeccao</b><small>cliente novo</small></button>
-        <button class="cartao-tipo" data-tipo="preco"><b>Preco</b><small>pesquisa de concorrente</small></button>
-        <button class="cartao-tipo" data-tipo="voz"><b>Voz do cliente</b><small>satisfacao / NPS</small></button>
-        <button class="cartao-tipo" data-tipo="evento"><b>Evento</b><small>feira / acao</small></button>
+        <button class="cartao-tipo" data-tipo="comercial"><b>Comercial</b><small>oportunidade de venda</small><span class="dica-ajuda" data-dica="Cliente demonstrou interesse em comprar, pediu orçamento ou tem obra vindo. Use quando há chance concreta de venda para encaminhar ao vendedor." title="o que é isso?">?</span></button>
+        <button class="cartao-tipo" data-tipo="cordialidade"><b>Cordialidade</b><small>relacionamento</small><span class="dica-ajuda" data-dica="Visita de relacionamento, sem pauta comercial. Serve para manter presença, ouvir o cliente e perceber se ele está esfriando antes de parar de comprar." title="o que é isso?">?</span></button>
+        <button class="cartao-tipo" data-tipo="tecnica"><b>Tecnica</b><small>reclamacao / problema</small><span class="dica-ajuda" data-dica="Reclamação ou problema: peça com defeito, quantidade errada, etiqueta trocada. Gera uma ocorrência numerada que fica sendo acompanhada até resolver. Exige foto." title="o que é isso?">?</span></button>
+        <button class="cartao-tipo" data-tipo="prospeccao"><b>Prospeccao</b><small>cliente novo</small><span class="dica-ajuda" data-dica="Empresa que ainda não compra da EM Vidros. Registre o contato e o potencial para o vendedor cotar depois. Exige foto." title="o que é isso?">?</span></button>
+        <button class="cartao-tipo" data-tipo="preco"><b>Preco</b><small>pesquisa de concorrente</small><span class="dica-ajuda" data-dica="Levantamento do que o concorrente está cobrando, com a cesta fixa de itens. Anexe orçamento ou foto do material como evidência. Exige foto." title="o que é isso?">?</span></button>
+        <button class="cartao-tipo" data-tipo="voz"><b>Voz do cliente</b><small>satisfacao / NPS</small><span class="dica-ajuda" data-dica="A pesquisa de satisfação completa: o cliente dá nota de 0 a 10 para cada processo da empresa — preço, prazo, entrega, qualidade, pós-venda, atendimento e expedição." title="o que é isso?">?</span></button>
+        <button class="cartao-tipo" data-tipo="evento"><b>Evento</b><small>feira / acao</small><span class="dica-ajuda" data-dica="Feira, ação de marketing ou encontro do setor. Registre os contatos gerados e a leitura do evento. Exige foto." title="o que é isso?">?</span></button>
       </div>
     </div>
 
@@ -60,7 +60,7 @@
 
       <div id="aviso-rascunho" class="alerta info oculto">Rascunho recuperado.</div>
 
-      <label>Cliente *
+      <label>Cliente *<span class="dica-ajuda" data-dica="Digite parte do nome e escolha na lista. Os dados vêm da carteira: código, cidade, rota, vendedor e quanto ele comprou nos últimos 12 meses. Se não achar, será registrado como cliente novo.">?</span>
         <input id="f-cliente" list="lista-clientes" placeholder="digite para buscar" autocomplete="off" required>
         <datalist id="lista-clientes"></datalist>
         <small id="dica-cliente" class="dica"></small>
@@ -72,24 +72,25 @@
         <input type="checkbox" id="f-prospect"> Cliente novo (nao esta na carteira)
       </label>
 
-      <label>Municipio *
+      <label>Municipio *<span class="dica-ajuda" data-dica="Preenchido sozinho quando o cliente vem da carteira. Alimenta o mapa de cobertura por praça.">?</span>
         <input id="f-municipio" list="lista-municipios" autocomplete="off" required>
         <datalist id="lista-municipios"></datalist>
       </label>
 
-      <label>Objetivo da visita *
+      <label>Objetivo da visita *<span class="dica-ajuda" data-dica="O que você foi resolver ali. Uma linha basta: &quot;atender reclamação de trinca&quot;, &quot;apresentar a linha de temperado&quot;.">?</span>
         <input id="f-objetivo" placeholder="o que eu vim resolver aqui" required>
       </label>
 
       <div id="campos-tipo"></div>
 
-      <label>O que aconteceu *
+      <label>O que aconteceu *<span class="dica-ajuda" data-dica="O que foi tratado, o que o cliente disse e o que você observou. É a parte que vira inteligência de mercado — quanto mais concreto, mais útil na reunião.">?</span>
         <textarea id="f-relato" rows="5" placeholder="conte o que foi tratado, o que o cliente disse, o que voce observou"></textarea>
         <small id="contador-relato" class="dica"></small>
       </label>
 
       <fieldset class="bloco-passo">
-        <legend>Proximo passo <b class="obrig">obrigatorio</b></legend>
+        <legend>Proximo passo <b class="obrig">obrigatorio</b>
+          <span class="dica-ajuda" data-dica="O que fica combinado depois da visita. Sem próximo passo a visita não conta como realizada — é o que separa relacionamento de café. Ex: enviar orçamento de temperado 8mm até sexta.">?</span></legend>
         <small class="dica">Sem proximo passo a visita nao conta como realizada.</small>
         <label>O que sera feito *
           <input id="f-passo" placeholder="ex: enviar orcamento de temperado 8mm" required>
@@ -148,5 +149,6 @@
 <div id="aviso" class="aviso oculto"></div>
 
 <script src="/static/app.js"></script>
+<script src="/static/dicas.js"></script>
 </body>
 </html>

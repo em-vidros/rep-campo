@@ -200,3 +200,21 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
   .marca .logo{height:24px;width:29px}
   .marca-app{font-size:.82rem}
 }
+
+/* ---- dicas de ajuda ---- */
+.dica-ajuda{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:17px;height:17px;min-width:17px;margin-left:5px;padding:0;
+  border:1px solid var(--borda);border-radius:50%;background:#fff;
+  color:var(--cinza);font-size:.66rem;font-weight:700;line-height:1;
+  cursor:help;vertical-align:middle;
+}
+.dica-ajuda:hover,.dica-ajuda:focus{background:var(--verde);color:#fff;border-color:var(--verde)}
+.cartao-tipo .dica-ajuda{position:absolute;top:9px;right:9px;margin:0}
+.cartao-tipo{position:relative}
+
+.bolha-dica{
+  position:fixed;z-index:200;background:#16211d;color:#fff;
+  padding:10px 13px;border-radius:9px;font-size:.82rem;line-height:1.45;
+  box-shadow:0 6px 22px rgba(0,0,0,.28);pointer-events:none;
+}

@@ -167,9 +167,12 @@ function montarCampos(tipo) {
     btn.parentNode.insertBefore(d, btn);
   };
   const obrig = FOTO_OBRIGATORIA.includes(tipo);
-  $('rotulo-foto').innerHTML = obrig
+  const dicaFoto = 'A foto é a prova de que a visita aconteceu e do que foi visto. '
+    + 'Em reclamação, fotografe o defeito; em pesquisa de preço, o orçamento ou a tabela.';
+  $('rotulo-foto').innerHTML = (obrig
     ? 'Foto <b class="obrig">obrigatoria neste tipo</b>'
-    : 'Foto <span class="dica">(opcional)</span>';
+    : 'Foto <span class="dica">(opcional)</span>')
+    + ' <span class="dica-ajuda" data-dica="' + dicaFoto + '">?</span>';
   $('wrap-encaminhado').classList.toggle('oculto', !['comercial', 'prospeccao', 'tecnica'].includes(tipo));
 }
 
@@ -185,7 +188,8 @@ function montarExperiencia(tipo) {
 
   box.innerHTML = `
     <fieldset class="bloco-exp">
-      <legend>Experiencia do cliente <b class="obrig">${prospect ? 'opcional' : 'nota obrigatoria'}</b></legend>
+      <legend>Experiencia do cliente <b class="obrig">${prospect ? 'opcional' : 'nota obrigatoria'}</b>
+        <span class="dica-ajuda" data-dica="Uma nota, um toque. A régua é sempre 0 a 10, mas o que ela mede muda conforme a etapa: recomendação da marca, satisfação com um processo, ou o esforço que o cliente teve para resolver um problema.">?</span></legend>
       <small class="dica" id="txt-pergunta">${esc(pergunta)}</small>
       <div class="notas" id="notas-exp">
         ${Array.from({ length: 11 }, (_, n) =>
@@ -194,6 +198,7 @@ function montarExperiencia(tipo) {
       <div class="reguas"><span id="regua-min"></span><span id="regua-max"></span></div>
       <div id="aviso-nps" class="aviso-curto oculto"></div>
       <label>O que ele avaliou
+        <span class="dica-ajuda" data-dica="A etapa da jornada de compra a que a nota se refere. Muda o significado da régua: em Relacionamento geral é recomendação da marca; em Pós-venda é o esforço que o cliente teve para resolver.">?</span>
         <select id="f-exp-etapa">
           ${(CFG.etapas_jornada || []).map(e =>
             `<option value="${esc(e)}"${e === etapaPadrao ? ' selected' : ''}>${esc(e)}</option>`).join('')}
@@ -241,7 +246,8 @@ function montarPesquisaCompleta(box) {
 
   box.innerHTML = `
     <fieldset class="bloco-exp">
-      <legend>Pesquisa de satisfação <b class="obrig">NPS obrigatório</b></legend>
+      <legend>Pesquisa de satisfação <b class="obrig">NPS obrigatório</b>
+        <span class="dica-ajuda" data-dica="A pesquisa completa: primeiro a nota de recomendação da marca, depois a satisfação com cada processo da empresa. Toque em n/a no que não se aplica àquele cliente.">?</span></legend>
 
       <small class="dica"><b>De 0 a 10, o quanto recomendaria a EM Vidros?</b></small>
       <div class="notas" id="notas-exp">
@@ -255,6 +261,7 @@ function montarPesquisaCompleta(box) {
       </label>
 
       <div class="titulo-proc">Satisfação com cada processo
+        <span class="dica-ajuda" data-dica="Cada linha é um processo da empresa. O cliente dá a nota que sentir; o que não se aplica a ele, toque em n/a. É o que mostra onde a empresa está boa e onde dói.">?</span>
         <small class="dica">0 = muito insatisfeito · 10 = muito satisfeito · toque em
           <b>n/a</b> no que não se aplica</small></div>
       ${linhas}
@@ -360,7 +367,8 @@ function montarEvidencias(tipo) {
     : 'Fotos e documentos que comprovem o que foi tratado';
   box.innerHTML = `
     <fieldset class="bloco-evid">
-      <legend>Evidências <b class="obrig">opcional</b></legend>
+      <legend>Evidências <b class="obrig">opcional</b>
+        <span class="dica-ajuda" data-dica="Fotos e documentos que comprovam o que foi tratado: proposta do concorrente, print de conversa, foto da peça com defeito ou do material. Marque o que é cada uma.">?</span></legend>
       <small class="dica">${esc(foco)}. Até ${CFG.max_anexos || 3}.</small>
       <input type="file" id="f-anexo" accept="image/*" multiple>
       <div id="lista-anexos" class="lista-anexos"></div>
