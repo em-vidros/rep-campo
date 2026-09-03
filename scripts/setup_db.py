@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Cria o esquema do REP Campo no Postgres. Roda uma vez, do Mac.
 
-    python3 setup_db.py
+    python3 scripts/setup_db.py
 
 Le a DATABASE_URL do ambiente ou do .env ao lado. Pode rodar de novo sem medo:
 tudo aqui e IF NOT EXISTS.
@@ -12,6 +12,8 @@ travam uma na outra.
 """
 import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import psycopg
 

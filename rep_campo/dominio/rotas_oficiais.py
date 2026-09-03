@@ -104,7 +104,6 @@ CIDADES_ITZ = {
     "santa barbara do para":                   ("Belém",       "BEL"),
     "santa ines":                              ("Buriticupu",  "DUTRA"),
     "santa izabel do para":                    ("Belém",       "BEL"),
-    "santa luzia do para":                     ("",            "BEL"),
     "santa luzia do para":                     ("Belém",       "BEL"),
     "santa luzia":                             ("Buriticupu",  "IMP II"),
     "santa maria do para":                     ("Belém",       "BEL"),

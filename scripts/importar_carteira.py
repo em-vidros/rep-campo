@@ -9,7 +9,7 @@ Fontes:
 
 Curva ABC calculada por volume 12m (Pareto: A=80% do faturamento, B=+15%, C=resto).
 
-Uso:  python importar_carteira.py [--sem-migracao]
+Uso:  python scripts/importar_carteira.py [--sem-migracao]
 """
 import csv
 import json
@@ -17,6 +17,8 @@ import os
 import psycopg
 import sys
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from rep_campo.config import BASE_DIR, carregar_env
 from rep_campo.dominio.carteira import curva_abc

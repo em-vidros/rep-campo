@@ -3,12 +3,14 @@
 Cria ou atualiza um usuario do REP Campo.
 A senha NUNCA fica em texto claro: e pedida no terminal e guardada como hash.
 
-Uso:  python criar_usuario.py <login> "<Nome>" [rep|gestor]
+Uso:  python scripts/criar_usuario.py <login> "<Nome>" [rep|gestor]
 """
 import getpass
 import os
 import sys
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import psycopg
 from werkzeug.security import generate_password_hash

@@ -88,8 +88,8 @@ gerar documento e **não roda no servidor**.
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install flask
-python importar_carteira.py       # cria o banco (precisa da carteira; sem ela, o banco nasce vazio)
-python criar_usuario.py teste "Teste" gestor
+python scripts/importar_carteira.py       # cria o banco (precisa da carteira; sem ela, o banco nasce vazio)
+python scripts/criar_usuario.py teste "Teste" gestor
 python app.py                      # http://localhost:8010
 ```
 

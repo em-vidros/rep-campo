@@ -2,7 +2,7 @@
 """
 Converte um .md deste projeto em HTML A4 e depois em PDF (Chrome headless).
 
-Uso:  python3 gerar_pdf.py DOC_TECNICO_TI.md ~/saida.pdf
+Uso:  python3 tools/gerar_pdf.py docs/DOC_TECNICO_TI.md ~/saida.pdf
 """
 import html as H
 import io

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """Gera rotas_oficiais.py a partir da planilha oficial de cidades e rotas.
 
-    python3 gerar_rotas_oficiais.py "/caminho/CIDADES, ROTAS E TABELAS ...xlsx"
+    python3 scripts/gerar_rotas_oficiais.py "/caminho/CIDADES, ROTAS E TABELAS ...xlsx"
 
 A planilha e a fonte da verdade. Rodar de novo sempre que ela for atualizada -
-nunca editar rotas_oficiais.py na mao.
+nunca editar rep_campo/dominio/rotas_oficiais.py na mao.
 """
+import os
 import sys
 from datetime import date
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import openpyxl
 
@@ -41,12 +44,15 @@ def main():
            if c[1].lower() == "raposa" and chave(c[0]) not in MIGRADOS]
 
     def bloco(lista):
-        linhas = []
+        # a planilha repete cidade (ex.: Santa Luzia do Pará em duas grafias
+        # que normalizam igual). Última vale, como num dict literal.
+        unicas = {}
         for cidade, _base, rota, tabela in sorted(lista):
             rota_limpa = rota if rota and chave(rota) != "sem rota" else ""
-            linhas.append('    %-42s (%-14s %s),' % (
-                '"%s":' % chave(cidade), '"%s",' % rota_limpa, '"%s"' % tabela))
-        return "\n".join(linhas)
+            unicas[chave(cidade)] = (rota_limpa, tabela)
+        return "\n".join(
+            '    %-42s (%-14s %s),' % ('"%s":' % k, '"%s",' % v[0], '"%s"' % v[1])
+            for k, v in unicas.items())
 
     saida = '''# -*- coding: utf-8 -*-
 """Cidade -> rota e tabela de preco. GERADO AUTOMATICAMENTE, nao editar na mao.
@@ -116,10 +122,12 @@ TOTAL_ITZ = len(CIDADES_ITZ)
 TOTAL_RAPOSA = len(CIDADES_RAPOSA)
 ''' % (caminho.split("/")[-1], date.today().strftime("%d/%m/%Y"), bloco(itz), bloco(rap))
 
-    with open("rotas_oficiais.py", "w", encoding="utf-8") as fh:
+    destino = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                         "rep_campo", "dominio", "rotas_oficiais.py")
+    with open(destino, "w", encoding="utf-8") as fh:
         fh.write(saida)
 
-    print("[OK] rotas_oficiais.py gerado")
+    print("[OK] %s gerado" % destino)
     print("  base Imperatriz: %d cidade(s)" % len(itz))
     print("  base Raposa    : %d cidade(s)" % len(rap))
     rotas = sorted({r for _, _, r, _ in itz if r and chave(r) != "sem rota"})

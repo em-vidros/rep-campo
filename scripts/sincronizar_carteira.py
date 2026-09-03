@@ -4,8 +4,8 @@
 Roda uma vez por dia, de madrugada. O REP Campo NAO e dono do cadastro: a
 carteira vive no painel de clientes, que puxa do ERP. Aqui e so espelho.
 
-    python3 sincronizar_carteira.py               # sincroniza
-    python3 sincronizar_carteira.py --simular     # so mostra o que faria
+    python3 scripts/sincronizar_carteira.py               # sincroniza
+    python3 scripts/sincronizar_carteira.py --simular     # so mostra o que faria
 
 De onde le, nesta ordem:
   1. CARTEIRA_URL  - endpoint do painel devolvendo JSON (preferido)
@@ -25,8 +25,9 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
+sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
 
 import psycopg
 

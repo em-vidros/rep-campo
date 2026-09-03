@@ -19,7 +19,7 @@ cd "…/em-vidros-raposa/app-rep-campo"
 2. **Troque a senha do Sipião** — hoje está uma provisória:
    ```
    REP_DB=~/.rep-campo-local/dados/rep_campo.db \
-   ~/.rep-campo-local/venv/bin/python criar_usuario.py sipiao "Tiago Sipiao" rep
+   ~/.rep-campo-local/venv/bin/python scripts/criar_usuario.py sipiao "Tiago Sipiao" rep
    ```
 3. No Android: `chrome://flags/#unsafely-treat-insecure-origin-as-secure` →
    adicionar o endereço → **Enabled** → reiniciar o Chrome

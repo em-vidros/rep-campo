@@ -32,7 +32,7 @@ if [ ! -f "$TRAB/.env" ]; then
 fi
 # O banco e o mesmo Neon de producao. Para brincar sem estragar dado real, crie um
 # branch no painel do Neon e troque a DATABASE_URL do .env.
-cd "$TRAB" && "$VENV/bin/python" setup_db.py
+cd "$TRAB" && "$VENV/bin/python" scripts/setup_db.py
 
 IP=$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || echo "")
 echo "[4/5] endereco"

@@ -1,11 +1,9 @@
 dados/
 docs/
+scripts/
+tests/
+tools/
 *.md
 !README.md
-teste_fumaca.py
 verificar_citacoes.py
-setup_db.py
-criar_usuario.py
-importar_carteira.py
-gerar_pdf.py
 rodar_local.sh

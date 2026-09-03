@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Núcleo da sincronização de carteira, sem CLI nem alerta."""
-import rotas_oficiais
-
+from rep_campo.dominio import rotas_oficiais
 from rep_campo.dominio.carteira import curva_abc
 
 

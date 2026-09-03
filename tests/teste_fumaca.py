@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Passa por todas as telas e rotas do app contra o banco e o Blob de verdade.
 
-    python3 teste_fumaca.py
+    python3 tests/teste_fumaca.py
 
 Cria os proprios usuarios com senha sorteada na hora, manda um lote de fichas com
 foto e evidencia, monta uma viagem e confere as respostas. Tudo que ele grava
@@ -15,6 +15,8 @@ import os
 import secrets
 import sys
 import uuid as uuidlib
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # o cookie de sessao exige HTTPS em producao; no cliente de teste nao ha TLS
 os.environ["REP_INSECURE_COOKIE"] = "1"

@@ -14,8 +14,8 @@ vendedor errado, rota errada e cliente que já saiu.
 ## O que a rotina faz
 
 ```bash
-python3 sincronizar_carteira.py            # sincroniza
-python3 sincronizar_carteira.py --simular  # mostra o que faria, sem gravar
+python3 scripts/sincronizar_carteira.py            # sincroniza
+python3 scripts/sincronizar_carteira.py --simular  # mostra o que faria, sem gravar
 ```
 
 - insere quem entrou
@@ -51,7 +51,7 @@ justamente a preocupação que levou o app para a nuvem.
 
 ```cron
 # 04h, fora do horário comercial
-0 4 * * * cd /home/ricardo/rep-campo && ./.venv/bin/python sincronizar_carteira.py >> /home/ricardo/logs/sync-carteira.log 2>&1
+0 4 * * * cd /home/ricardo/rep-campo && ./.venv/bin/python scripts/sincronizar_carteira.py >> /home/ricardo/logs/sync-carteira.log 2>&1
 ```
 
 O servidor precisa de: Python com `psycopg`, a `DATABASE_URL` do Neon num `.env`

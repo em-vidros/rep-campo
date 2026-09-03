@@ -35,9 +35,9 @@ REP_SECRET_KEY=...
 ```bash
 python3 -m venv venv
 venv/bin/pip install -r requirements.txt
-venv/bin/python setup_db.py                       # idempotente, pode rodar de novo
-venv/bin/python criar_usuario.py ricardo "Ricardo Brum" gestor
-venv/bin/python importar_carteira.py
+venv/bin/python scripts/setup_db.py                       # idempotente, pode rodar de novo
+venv/bin/python scripts/criar_usuario.py ricardo "Ricardo Brum" gestor
+venv/bin/python scripts/importar_carteira.py
 ```
 
 O `setup_db.py` cria as dez tabelas. O `criar_usuario.py` pede a senha no
@@ -54,7 +54,7 @@ banco não conectou e nada mais adianta testar.
 ## Testar antes de publicar
 
 ```bash
-venv/bin/python teste_fumaca.py
+venv/bin/python tests/teste_fumaca.py
 ```
 
 Ele cria os próprios usuários com senha sorteada, manda um lote de fichas com

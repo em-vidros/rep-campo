@@ -5,7 +5,7 @@ App do representante comercial da **base Itz**. PWA (instala no celular),
 
 Instrumento da metodologia descrita em
 [EMVIDROS_REP_RELATORIOS_EVIDENCIAS.md](../EMVIDROS_REP_RELATORIOS_EVIDENCIAS.md).
-Deploy e bloqueios: [DEPLOY.md](DEPLOY.md) · Pedido à TI: [PEDIDO_TI.md](PEDIDO_TI.md).
+Deploy e bloqueios: [DEPLOY.md](docs/DEPLOY.md) · Pedido à TI: [PEDIDO_TI.md](PEDIDO_TI.md).
 
 > Status: **v1 construída e testada localmente. NÃO está em produção.**
 > Ver "Pré-requisito de infra" antes de planejar o deploy.
@@ -73,13 +73,17 @@ automático com pedido do ERP. Ver §11 do manual.
 ## Stack
 
 Flask + Postgres no Neon + PWA em JS puro (sem framework, sem build).
-Publicado na Vercel. Para publicar, veja o `PUBLICAR.md`.
+Publicado na Vercel. Para publicar, veja o `docs/PUBLICAR.md`.
 Mesmo padrão do painel de metas e do ERP próprio.
 
 ```
-app.py                 backend e API
-importar_carteira.py   carrega a carteira Itz + municípios da migração
-criar_usuario.py       cria usuário (senha via prompt, guardada como hash)
+app.py                 shim fino (o app mora em rep_campo/)
+rep_campo/             backend e API (dominio, aplicacao, infra, web)
+api/                   entrada da Vercel
+scripts/               setup_db, carteira, usuarios, sync, rotas oficiais
+tests/                 teste de fumaça contra Neon + Blob
+tools/                 utilitários locais (gerar PDF)
+docs/                  arquitetura, deploy, manuais
 static/                app.js, sw.js, styles.css, manifest, ícones
 templates/             index.html, login.html
 dados/                 banco, fotos e chave — NÃO versionar
@@ -103,16 +107,16 @@ macOS). O código-fonte continua sendo o desta pasta.
 
 Para GPS e offline funcionarem no Android sem HTTPS, marcar a origem como segura
 em `chrome://flags/#unsafely-treat-insecure-origin-as-secure` — ver
-[DEPLOY.md](DEPLOY.md), Caminho A.
+[docs/DEPLOY.md](docs/DEPLOY.md), Caminho A.
 
 ## Subir do zero (manual)
 
 ```bash
 python3 -m venv .venv && . .venv/bin/activate
 pip install flask
-python importar_carteira.py          # cria o banco e carrega a carteira
-python criar_usuario.py sipiao "Tiago Sipiao" rep
-python criar_usuario.py ricardo "Ricardo Brum" gestor
+python scripts/importar_carteira.py          # cria o banco e carrega a carteira
+python scripts/criar_usuario.py sipiao "Tiago Sipiao" rep
+python scripts/criar_usuario.py ricardo "Ricardo Brum" gestor
 python app.py                        # http://localhost:8010
 ```
 
@@ -120,7 +124,7 @@ A senha é pedida no terminal e gravada como **hash pbkdf2:sha256** — nunca em
 texto claro. (`pbkdf2` explícito: o default do Werkzeug 3 é `scrypt`, que não
 existe em builds do Python sem OpenSSL completo, caso do Python do macOS.)
 
-Reimportar a carteira depois: `python importar_carteira.py` (idempotente, faz
+Reimportar a carteira depois: `python scripts/importar_carteira.py` (idempotente, faz
 upsert por código e recalcula a curva ABC).
 
 ### Apagar as fichas de demonstração
@@ -191,7 +195,7 @@ servidor confirma sem duplicar.
 Sem erro de JavaScript no console.
 
 > **Dois recursos não puderam ser validados no navegador de teste** e dependem
-> de um celular real (estão no [ROTEIRO_TESTE_CAMPO.md](ROTEIRO_TESTE_CAMPO.md)):
+> de um celular real (estão no [ROTEIRO_TESTE_CAMPO.md](docs/ROTEIRO_TESTE_CAMPO.md)):
 >
 > 1. **Geolocalização** — o navegador headless não concede permissão. O app
 >    degradou como projetado: salvou como evidência **leve** em vez de travar.
