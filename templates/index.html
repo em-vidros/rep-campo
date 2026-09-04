@@ -17,7 +17,8 @@
   <div class="topo-linha">
     <div class="marca"><img src="/static/logo_em_vidros.svg" alt="EM Vidros" class="logo"><span class="marca-app">REP <b>Campo</b></span></div>
     <span class="topo-links">
-      {% if papel == 'gestor' %}<a class="sair" href="/painel">painel</a>{% endif %}
+      {% if papel in ('gestor', 'admin') %}<a class="sair" href="/painel">painel</a>
+      <a class="sair" href="/recados">recados</a>{% endif %}
 <a class="sair" href="/viagens">viagens</a>
       <a class="sair" href="/conta">conta</a>
       <a class="sair" href="/logout">sair</a>
@@ -35,6 +36,9 @@
   <button class="aba" data-tela="fichas">Minhas fichas</button>
   <button class="aba" data-tela="resumo">Resumo</button>
 </nav>
+
+<!-- recado geral do gestor: some quando ele toca em "ok, li" -->
+<div id="faixa-recados" class="faixa-recados oculto"></div>
 
 <main>
   <!-- ============ NOVA FICHA ============ -->

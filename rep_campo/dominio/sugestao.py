@@ -1,10 +1,18 @@
 # -*- coding: utf-8 -*-
 """Pontuação de quem visitar. Pura: recebe uma linha, devolve peso e motivos."""
 from .catalogos import NPS_DETRATOR
+from .recados import PESO_MISSAO, motivo_missao
 
 
 def pontuar_cliente(linha, dias_visita, ciclo):
     peso, motivos = 0, []
+
+    # Recado do gestor vem primeiro e por cima: e pedido explicito de gente, nao
+    # inferencia nossa. Se ele mandou passar no cliente, o cliente e o primeiro
+    # da lista, doa a heuristica o que doer.
+    if linha.get("recados_abertos"):
+        peso += PESO_MISSAO
+        motivos.append(motivo_missao(linha["recados_abertos"], linha.get("recado_de")))
 
     dias_sem_comprar = linha.get("dias_sem_comprar")
     vol = linha.get("vol_12m") or 0

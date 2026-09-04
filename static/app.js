@@ -565,8 +565,11 @@ $('form-ficha').addEventListener('submit', async ev => {
 
   await filaSalvar(ficha);
   localStorage.removeItem('rascunho');
+  const codSalvo = ficha.cliente_codigo;
+  const uuidSalvo = ficha.uuid;
   limparForm();
   aviso('Ficha salva no celular.');
+  if (codSalvo) await perguntarMissoes(codSalvo, uuidSalvo);
   atualizarStatus();
   sincronizar();
 });
@@ -716,7 +719,8 @@ $('f-cliente').addEventListener('input', ev => {
       <div class="cc-linha"><span>Rota</span><b>${esc(c.rota || '-')}</b></div>
       <div class="cc-linha"><span>Vendedor</span><b>${esc(c.vendedor || '-')}</b></div>
       <div class="cc-linha"><span>Curva</span><b>${c.curva ? 'classe ' + esc(c.curva) : 'sem classificacao'}</b></div>
-      <div class="cc-linha"><span>Comprou 12m</span><b>${brl(c.vol_12m)}</b></div>`;
+      <div class="cc-linha"><span>Comprou 12m</span><b>${brl(c.vol_12m)}</b></div>`
+      + blocoMissoes(c.codigo);
     cartao.classList.remove('oculto');
     if (c.cidade && !$('f-municipio').value) $('f-municipio').value = c.cidade;
     if (c.vendedor && !$('f-encaminhado').value) {
@@ -805,6 +809,85 @@ async function resumoLocal() {
   };
 }
 
+/* ------------------------------------------------------------------ recados
+
+O recado do gestor vem dentro do /api/bootstrap, que o service worker guarda.
+Assim ele continua visivel na estrada sem sinal - que e justamente quando o
+representante precisa lembrar do que combinou antes de sair.
+*/
+const recadosDoCliente = cod =>
+  ((CFG.recados || {}).por_cliente || {})[cod] || [];
+
+function blocoMissoes(cod) {
+  const lista = recadosDoCliente(cod);
+  if (!lista.length) return '';
+  return `<div class="missoes">` + lista.map(r => `
+    <div class="missao">
+      <span class="rotulo-missao">recado de ${esc((r.criado_por_nome || '').split(' ')[0])}</span>
+      ${esc(r.texto)}
+      ${r.prazo ? `<span class="prazo">até ${esc(dataBr(r.prazo))}</span>` : ''}
+    </div>`).join('') + `</div>`;
+}
+
+const dataBr = iso => {
+  if (!iso) return '';
+  const d = String(iso).slice(0, 10).split('-');
+  return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : iso;
+};
+
+function pintarRecadosGerais() {
+  const faixa = $('faixa-recados');
+  if (!faixa) return;
+  const gerais = ((CFG.recados || {}).gerais || []);
+  if (!gerais.length) return faixa.classList.add('oculto');
+  faixa.innerHTML = gerais.map(r => `
+    <div class="recado-geral" data-recado="${r.id}">
+      <b>${esc((r.criado_por_nome || '').split(' ')[0])}:</b> ${esc(r.texto)}
+      <button class="mini" data-lido="${r.id}">ok, li</button>
+    </div>`).join('');
+  faixa.classList.remove('oculto');
+  faixa.onclick = async ev => {
+    const b = ev.target.closest('[data-lido]');
+    if (!b) return;
+    const id = Number(b.dataset.lido);
+    b.closest('[data-recado]').remove();
+    if (!faixa.querySelector('[data-recado]')) faixa.classList.add('oculto');
+    // some da tela na hora; se estiver sem sinal, o servidor sabe no proximo boot
+    try {
+      await fetch('/api/meus-recados/lidos', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: [id] }),
+      });
+    } catch (e) { /* sem rede: fica marcado como nao lido, e so */ }
+  };
+}
+
+/* Pergunta se a missao foi cumprida logo depois de salvar a ficha daquele
+   cliente. E o unico momento em que ele tem o assunto fresco na cabeca. */
+async function perguntarMissoes(cod, uuidFicha) {
+  const lista = recadosDoCliente(cod);
+  for (const r of lista) {
+    if (!confirm(`Recado de ${(r.criado_por_nome || '').split(' ')[0]}:\n\n"${r.texto}"\n\nVocê resolveu isso nesta visita?`)) continue;
+    const resposta = prompt('O que dá para responder? (opcional)') || '';
+    try {
+      const req = await fetch(`/api/meus-recados/${r.id}/concluir`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resposta, ficha_uuid: uuidFicha }),
+      });
+      if (req.ok) {
+        const por = (CFG.recados || {}).por_cliente || {};
+        por[cod] = (por[cod] || []).filter(x => x.id !== r.id);
+        if (!por[cod].length) delete por[cod];
+        await cacheGravar('cfg', CFG);
+      } else {
+        aviso('Sem sinal para confirmar o recado agora - avise quando voltar.');
+      }
+    } catch (e) {
+      aviso('Sem sinal para confirmar o recado agora - avise quando voltar.');
+    }
+  }
+}
+
 /* -------------------------------------------------------------- inicializacao */
 async function carregarCfg() {
   try {
@@ -821,6 +904,7 @@ async function carregarCfg() {
     const c = await cacheLer('cfg');
     if (c && c.valor) CFG = c.valor;
   }
+  pintarRecadosGerais();
   $('lista-clientes').innerHTML = (CFG.clientes || [])
     .map(c => `<option value="${esc(c.nome)}">`).join('');
   $('lista-municipios').innerHTML = (CFG.municipios || [])

@@ -177,3 +177,22 @@ tbody tr.nunca{background:#fdecea}
 .relatorio h3{margin-top:0}
 @media print{ .topo,.abas,.barra-filtros,.btn-sec,.ficha-cab{display:none!important}
   .relatorio{border:0;padding:0} }
+
+/* ---- tela de recados (gestao) ---- */
+.linha-titulo{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.mini-select{padding:5px 8px;border:1px solid var(--borda);border-radius:8px;font-size:.85rem}
+.item-recado{border:1px solid var(--borda);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.item-recado.concluido{opacity:.62}
+.item-recado.cancelado{opacity:.45}
+.item-recado .linha-topo{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+.item-recado .texto{margin:0 0 6px;line-height:1.45}
+.item-recado .resposta{
+  margin:6px 0 0;padding:7px 10px;background:#f1f6f3;border-radius:8px;font-size:.9rem
+}
+.selo{
+  font-size:.7rem;text-transform:uppercase;letter-spacing:.6px;font-weight:700;
+  padding:2px 8px;border-radius:12px;color:#fff;background:var(--cinza)
+}
+.selo.aberto{background:var(--alerta)}
+.selo.lido{background:var(--aviso)}
+.selo.concluido{background:var(--ok)}

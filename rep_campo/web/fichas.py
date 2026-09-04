@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, request, session
 
 from rep_campo.aplicacao import fichas as servico
+from rep_campo.aplicacao import recados as app_recados
 from rep_campo.dominio import catalogos as C
 from rep_campo.dominio.texto import inteiro
 from rep_campo.infra import db as dbmod
@@ -26,6 +27,9 @@ def bootstrap():
     return jsonify({
         "usuario": {"login": session["login"], "nome": session["nome"],
                     "papel": session["papel"]},
+        # vai no bootstrap de proposito: o service worker guarda esta resposta,
+        # entao o representante le os recados mesmo sem sinal na estrada
+        "recados": app_recados.para_o_app(db, session["login"]),
         "clientes": clientes,
         "municipios": municipios,
         "tipos": C.TIPOS,

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REP Campo - Recados</title>
+<meta name="theme-color" content="#0f3d2e">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/painel.css">
+</head>
+<body class="painel">
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca"><img src="/static/logo_em_vidros.svg" alt="EM Vidros" class="logo">
+      <span class="marca-app">REP <b>Campo</b></span> <em>recados</em></div>
+    <div class="topo-acoes">
+      <a class="sair" href="/painel">painel</a>
+      <a class="sair" href="/viagens">viagens</a>
+      <a class="sair" href="/conta">conta</a>
+      <a class="sair" href="/logout">sair</a>
+    </div>
+  </div>
+</header>
+
+<main class="conteudo">
+  <div id="msg"></div>
+
+  <section class="cartao">
+    <h2>Mandar um recado</h2>
+    <p class="dica">Sem cliente, é um recado do dia a dia: aparece numa faixa no
+      topo do app dele. <b>Com cliente, vira missão</b> — o cliente sobe ao topo
+      da sugestão de visitas, a missão aparece quando ele abre a ficha desse
+      cliente, e ao salvar o app pergunta se cumpriu.</p>
+
+    <label>Para
+      <select id="r-para"></select>
+    </label>
+
+    <label>Recado *
+      <textarea id="r-texto" rows="3" maxlength="600"
+        placeholder="ex: passar no cliente para retomar o orçamento do box parado desde julho"></textarea>
+    </label>
+
+    <label>Cliente <span class="dica">— deixe vazio para recado geral</span>
+      <input id="r-cliente" list="lista-clientes" placeholder="digite para buscar" autocomplete="off">
+      <datalist id="lista-clientes"></datalist>
+    </label>
+
+    <label>Prazo <span class="dica">— opcional</span>
+      <input id="r-prazo" type="date">
+    </label>
+
+    <button id="btn-mandar" class="btn">Mandar recado</button>
+  </section>
+
+  <section class="cartao">
+    <div class="linha-titulo">
+      <h2>Recados</h2>
+      <select id="f-situacao" class="mini-select">
+        <option value="pendentes">pendentes</option>
+        <option value="concluidos">concluídos</option>
+        <option value="">todos</option>
+      </select>
+    </div>
+    <div id="lista-recados"><p class="dica">carregando…</p></div>
+  </section>
+</main>
+
+<script src="/static/recados.js"></script>
+</body>
+</html>

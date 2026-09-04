@@ -218,3 +218,25 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
   padding:10px 13px;border-radius:9px;font-size:.82rem;line-height:1.45;
   box-shadow:0 6px 22px rgba(0,0,0,.28);pointer-events:none;
 }
+
+/* ---- recados do gestor ---- */
+/* Faixa do recado geral: fica no caminho de proposito, ate ele dizer que leu. */
+.faixa-recados{padding:10px 16px 0}
+.recado-geral{
+  background:#fff8e6;border-left:3px solid var(--aviso);border-radius:0 8px 8px 0;
+  padding:10px 12px;margin-bottom:8px;font-size:.95rem
+}
+.recado-geral b{color:#7a4d00}
+.recado-geral .mini{margin-top:8px}
+
+/* Missao no cartao do cliente: aparece na hora de preencher a ficha dele. */
+.missoes{margin-top:10px;border-top:1px solid var(--borda);padding-top:10px}
+.missao{
+  background:#fff8e6;border-radius:8px;padding:9px 11px;margin-bottom:6px;
+  font-size:.92rem;line-height:1.4
+}
+.rotulo-missao{
+  display:block;font-size:.72rem;text-transform:uppercase;letter-spacing:.6px;
+  color:#7a4d00;font-weight:700;margin-bottom:3px
+}
+.missao .prazo{display:block;margin-top:3px;font-size:.78rem;color:var(--cinza)}

@@ -15,7 +15,7 @@
     <div class="marca"><img src="/static/logo_em_vidros.svg" alt="EM Vidros" class="logo"><span class="marca-app">REP <b>Campo</b></span></div>
     <div class="topo-acoes">
       <a class="sair" href="/">app do rep</a>
-      {% if papel == 'gestor' %}<a class="sair" href="/painel">painel</a>
+      {% if papel in ('gestor', 'admin') %}<a class="sair" href="/painel">painel</a>
       {% if papel == 'admin' %}<a class="sair" href="/usuarios">usuários</a>
       <a class="sair" href="/importar">importar</a>{% endif %}{% endif %}
       <a class="sair" href="/logout">sair</a>

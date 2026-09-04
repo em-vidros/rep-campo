@@ -293,7 +293,14 @@ def sugestao_linhas(db, cidades=None, municipio=None, rota=None):
                (SELECT COUNT(*) FROM ocorrencias o
                  WHERE o.cliente_codigo = c.codigo AND o.status <> 'resolvida') AS oc_abertas,
                (SELECT MIN(e.nota) FROM experiencia e
-                 WHERE e.cliente_codigo = c.codigo) AS pior_nota
+                 WHERE e.cliente_codigo = c.codigo) AS pior_nota,
+               (SELECT COUNT(*) FROM recados rc
+                 WHERE rc.cliente_codigo = c.codigo
+                   AND rc.status IN ('aberto','lido')) AS recados_abertos,
+               (SELECT rc.criado_por_nome FROM recados rc
+                 WHERE rc.cliente_codigo = c.codigo
+                   AND rc.status IN ('aberto','lido')
+                 ORDER BY rc.id DESC LIMIT 1) AS recado_de
           FROM clientes c
           LEFT JOIN fichas f ON f.cliente_codigo = c.codigo
          WHERE __FILTROS__
@@ -463,3 +470,79 @@ def aplicar_mapa_rotas(db, mapa):
 
 def contar_clientes(db):
     return db.execute("SELECT COUNT(*) c FROM clientes").fetchone()["c"]
+
+
+# ------------------------------------------------------------------ recados
+
+def criar_recado(db, criado_em, criado_por, criado_por_nome, para_login, texto,
+                 cliente_codigo, cliente_nome, prazo):
+    return db.execute("""
+        INSERT INTO recados (criado_em, criado_por, criado_por_nome, para_login,
+                             texto, cliente_codigo, cliente_nome, prazo)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id""",
+        (criado_em, criado_por, criado_por_nome, para_login, texto,
+         cliente_codigo or None, cliente_nome or None, prazo or None)).fetchone()["id"]
+
+
+def obter_recado(db, rid):
+    return db.execute("SELECT * FROM recados WHERE id = %s", (rid,)).fetchone()
+
+
+def listar_recados(db, para_login=None, status=None, limite=200):
+    filtros, args = [], []
+    if para_login:
+        filtros.append("para_login = %s")
+        args.append(para_login)
+    if status:
+        filtros.append("status = ANY(%s)")
+        args.append(list(status))
+    onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    args.append(limite)
+    return [dict(r) for r in db.execute(
+        "SELECT * FROM recados %s ORDER BY id DESC LIMIT %%s" % onde, args)]
+
+
+def recados_pendentes(db, para_login, pendentes):
+    """O que o app do representante carrega. Vai no bootstrap, entao fica
+    guardado no aparelho e ele le mesmo sem sinal."""
+    return [dict(r) for r in db.execute("""
+        SELECT id, texto, cliente_codigo, cliente_nome, prazo, status,
+               criado_em, criado_por_nome
+          FROM recados
+         WHERE para_login = %s AND status = ANY(%s)
+         ORDER BY (cliente_codigo IS NULL) DESC, id DESC""",
+        (para_login, list(pendentes)))]
+
+
+def marcar_recados_lidos(db, para_login, ids, quando):
+    if not ids:
+        return 0
+    cur = db.execute("""
+        UPDATE recados SET status = 'lido', lido_em = %s
+         WHERE para_login = %s AND id = ANY(%s) AND status = 'aberto'""",
+        (quando, para_login, list(ids)))
+    return cur.rowcount
+
+
+def concluir_recado(db, rid, para_login, resposta, ficha_uuid, quando, pendentes):
+    cur = db.execute("""
+        UPDATE recados SET status = 'concluido', concluido_em = %s,
+               resposta = %s, ficha_uuid = COALESCE(%s, ficha_uuid)
+         WHERE id = %s AND para_login = %s AND status = ANY(%s)""",
+        (quando, resposta or None, ficha_uuid or None, rid, para_login, list(pendentes)))
+    return cur.rowcount
+
+
+def cancelar_recado(db, rid, pendentes):
+    cur = db.execute(
+        "UPDATE recados SET status = 'cancelado' WHERE id = %s AND status = ANY(%s)",
+        (rid, list(pendentes)))
+    return cur.rowcount
+
+
+def contagem_recados(db, para_login, pendentes):
+    return db.execute("""
+        SELECT COUNT(*) FILTER (WHERE cliente_codigo IS NULL) AS gerais,
+               COUNT(*) FILTER (WHERE cliente_codigo IS NOT NULL) AS missoes
+          FROM recados WHERE para_login = %s AND status = ANY(%s)""",
+        (para_login, list(pendentes))).fetchone()

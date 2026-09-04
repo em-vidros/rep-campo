@@ -179,6 +179,25 @@ TABELAS = [
             falhas INTEGER NOT NULL DEFAULT 0,
             ultima TIMESTAMPTZ NOT NULL
         )"""),
+    # Recado do gestor para quem esta em campo. Sem cliente = recado geral do dia
+    # a dia; com cliente = missao, que a sugestao de visitas e a ficha usam.
+    ("recados", """
+        CREATE TABLE IF NOT EXISTS recados (
+            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            criado_em TEXT NOT NULL,
+            criado_por TEXT NOT NULL,
+            criado_por_nome TEXT NOT NULL,
+            para_login TEXT NOT NULL,
+            texto TEXT NOT NULL,
+            cliente_codigo TEXT,
+            cliente_nome TEXT,
+            prazo TEXT,
+            status TEXT NOT NULL DEFAULT 'aberto',
+            lido_em TEXT,
+            concluido_em TEXT,
+            resposta TEXT,
+            ficha_uuid TEXT
+        )"""),
 ]
 
 INDICES = [
@@ -199,6 +218,8 @@ INDICES = [
     "CREATE INDEX IF NOT EXISTS ix_fichas_cliente ON fichas(cliente_codigo)",
     "CREATE INDEX IF NOT EXISTS ix_fichas_viagem ON fichas(viagem_id)",
     "CREATE INDEX IF NOT EXISTS ix_clientes_nome ON clientes(nome)",
+    "CREATE INDEX IF NOT EXISTS ix_recados_para ON recados(para_login, status)",
+    "CREATE INDEX IF NOT EXISTS ix_recados_cliente ON recados(cliente_codigo, status)",
 ]
 
 
