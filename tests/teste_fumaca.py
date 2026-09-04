@@ -22,6 +22,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 os.environ["REP_INSECURE_COOKIE"] = "1"
 
 import app as appmod
+from rep_campo.infra.db import get_db
+from rep_campo.infra.relogio import agora
 from werkzeug.security import generate_password_hash
 
 SENHA = secrets.token_urlsafe(16)
@@ -54,13 +56,13 @@ def main():
     contas = {"g." + marca[1:9]: "admin", "r." + marca[1:9]: "rep",
               "o." + marca[1:9]: "rep"}
     with appmod.app.app_context():
-        db = appmod.get_db()
+        db = get_db()
         for login, papel in contas.items():
             db.execute("INSERT INTO usuarios (login, nome, senha_hash, papel, base,"
                        " ativo, criado_em) VALUES (%s,%s,%s,%s,'ITZ',1,%s)",
                        (login, "Teste " + papel,
                         generate_password_hash(SENHA, method="pbkdf2:sha256"),
-                        papel, appmod._agora()))
+                        papel, agora()))
         db.commit()
     lgestor, lrep, loutro = list(contas)
 
@@ -216,7 +218,7 @@ def main():
         ultima = trava.post("/login", data={"login": loutro, "senha": "errada"})
     checa("nona tentativa e barrada", ultima.status_code == 429, ultima.status_code)
     with appmod.app.app_context():
-        db = appmod.get_db()
+        db = get_db()
         db.execute("DELETE FROM tentativas_login")
         db.commit()
 
@@ -229,7 +231,7 @@ def main():
 
     # limpeza
     with appmod.app.app_context():
-        db = appmod.get_db()
+        db = get_db()
         db.execute("DELETE FROM anexos WHERE ficha_uuid LIKE %s", (marca + "%",))
         db.execute("DELETE FROM experiencia WHERE ficha_uuid LIKE %s", (marca + "%",))
         db.execute("DELETE FROM ocorrencias WHERE ficha_uuid LIKE %s", (marca + "%",))

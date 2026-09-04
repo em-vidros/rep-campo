@@ -129,7 +129,6 @@ CIDADES_ITZ = {
     "sitio novo do tocantins":                 ("Araguatins",  "IMP"),
     "sitio novo":                              ("Pres. Dutra", "IMP"),
     "tracuateua":                              ("",            "BEL"),
-    "tracuateua":                              ("",            "BEL"),
     "tucuma":                                  ("",            "PARAU"),
     "tuntum":                                  ("Pres. Dutra", "DUTRA"),
     "ulianopolis":                             ("Paragominas", "PARAG"),
@@ -267,26 +266,11 @@ CIDADES_RAPOSA = {
 }
 
 
-EXPANSOES = [
-    (r"\bdo ma\b", "do maranhao"), (r"\bdo to\b", "do tocantins"),
-    (r"\bdo pa\b", "do para"), (r"\bdo pi\b", "do piaui"),
-    (r"\bgov\.?\b", "governador"), (r"\bpres\.?\b", "presidente"),
-    (r"\bsto\.?\b", "santo"), (r"\bsta\.?\b", "santa"),
-]
-CORRECOES = {"araguaiina": "araguaina"}
-
-
-def _chave(cidade):
-    import re
-    import unicodedata
-    t = unicodedata.normalize("NFKD", str(cidade or "")).encode("ascii", "ignore").decode()
-    t = t.split("/")[0]
-    t = re.sub(r"[-_.]+", " ", t).lower()
-    t = re.sub(r"\s+", " ", t).strip()
-    for padrao, troca in EXPANSOES:
-        t = re.sub(padrao, troca, t)
-    t = re.sub(r"\s+", " ", t).strip()
-    return CORRECOES.get(t, t)
+from rep_campo.dominio.texto import (
+    CORRECOES_CIDADE as CORRECOES,
+    EXPANSOES_CIDADE as EXPANSOES,
+    chave_cidade as _chave,
+)
 
 
 def rota_da_cidade(cidade):

@@ -65,6 +65,12 @@ entra em roteiro regular. E diferente de cidade ausente da planilha, que nao
 tem atendimento definido.
 """
 
+from rep_campo.dominio.texto import (
+    CORRECOES_CIDADE as CORRECOES,
+    EXPANSOES_CIDADE as EXPANSOES,
+    chave_cidade as _chave,
+)
+
 # cidade normalizada -> (rota, tabela de preco)
 CIDADES_ITZ = {
 %s
@@ -73,28 +79,6 @@ CIDADES_ITZ = {
 CIDADES_RAPOSA = {
 %s
 }
-
-
-EXPANSOES = [
-    (r"\\bdo ma\\b", "do maranhao"), (r"\\bdo to\\b", "do tocantins"),
-    (r"\\bdo pa\\b", "do para"), (r"\\bdo pi\\b", "do piaui"),
-    (r"\\bgov\\.?\\b", "governador"), (r"\\bpres\\.?\\b", "presidente"),
-    (r"\\bsto\\.?\\b", "santo"), (r"\\bsta\\.?\\b", "santa"),
-]
-CORRECOES = {"araguaiina": "araguaina"}
-
-
-def _chave(cidade):
-    import re
-    import unicodedata
-    t = unicodedata.normalize("NFKD", str(cidade or "")).encode("ascii", "ignore").decode()
-    t = t.split("/")[0]
-    t = re.sub(r"[-_.]+", " ", t).lower()
-    t = re.sub(r"\\s+", " ", t).strip()
-    for padrao, troca in EXPANSOES:
-        t = re.sub(padrao, troca, t)
-    t = re.sub(r"\\s+", " ", t).strip()
-    return CORRECOES.get(t, t)
 
 
 def rota_da_cidade(cidade):

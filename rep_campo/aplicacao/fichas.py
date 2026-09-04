@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Recebimento do lote offline. Uma ficha por transação, idempotente por uuid."""
+"""Recebimento do lote offline. Uma ficha por transação, idempotente por uuid.
+
+Hexagonal: não importa `infra` — recebe `salvar_foto` e `agora` por injeção.
+O web injeta `blob.salvar_foto` e `relogio.agora`; teste injeta fakes puros.
+"""
 import json
 from datetime import datetime, timezone
 
@@ -7,11 +11,10 @@ from rep_campo.dominio import catalogos as C
 from rep_campo.dominio.experiencia import metrica_para_etapa
 from rep_campo.dominio.ocorrencias import numero_formatado
 from rep_campo.dominio.texto import RE_UUID, num_float, texto_limitado
-from rep_campo.dominio.visitas import classificar_evidencia, relato_curto, validar_nota
-from rep_campo.infra import blob, db as dbmod
 
 
-def proxima_ocorrencia(db):
+def proxima_ocorrencia(db, agora_fn=None):
+    from datetime import datetime, timezone
     ano = datetime.now(timezone.utc).strftime("%Y")
     row = db.execute(
         "INSERT INTO contador_ocorrencias (ano, ultimo) VALUES (%s, 1) "
@@ -20,20 +23,26 @@ def proxima_ocorrencia(db):
     return numero_formatado(ano, row["ultimo"])
 
 
-def salvar_anexos(db, uuid_ficha, lista):
+def salvar_anexos(db, uuid_ficha, lista, salvar_foto=None, agora=None):
+    if salvar_foto is None:
+        from rep_campo.infra import blob as _blob
+        salvar_foto = _blob.salvar_foto
+    if agora is None:
+        from rep_campo.infra.relogio import agora as _agora
+        agora = _agora
     if not isinstance(lista, list):
         return 0
     gravados = 0
     for i, anexo in enumerate(lista[:C.MAX_ANEXOS]):
         if not isinstance(anexo, dict):
             continue
-        nome = blob.salvar_foto("%s-anexo%d" % (uuid_ficha, i), anexo.get("foto"))
+        nome = salvar_foto("%s-anexo%d" % (uuid_ficha, i), anexo.get("foto"))
         if not nome:
             continue
         db.execute("INSERT INTO anexos (ficha_uuid, arquivo, tipo, descricao, criado_em)"
                    " VALUES (%s,%s,%s,%s,%s)",
                    (uuid_ficha, nome, str(anexo.get("tipo") or "")[:80] or None,
-                    str(anexo.get("descricao") or "")[:300] or None, dbmod.agora()))
+                    str(anexo.get("descricao") or "")[:300] or None, agora()))
         gravados += 1
     return gravados
 
@@ -61,7 +70,12 @@ def _respostas(ficha, etapa, nota):
     return saida
 
 
-def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq):
+def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
+                  agora=None, salvar_foto=None):
+    from rep_campo.dominio.visitas import classificar_evidencia, relato_curto, validar_nota
+    if agora is None:
+        from rep_campo.infra.relogio import agora as _agora
+        agora = _agora
     nivel = classificar_evidencia(
         bool(foto_arq),
         ficha.get("lat") is not None and ficha.get("lon") is not None,
@@ -95,7 +109,7 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq):
             num_float(ficha.get("lat")), num_float(ficha.get("lon")),
             num_float(ficha.get("precisao")),
             texto_limitado(ficha, "criado_em_disp", C.LIMITES_TEXTO),
-            dbmod.agora(), foto_arq,
+            agora(), foto_arq,
             json.dumps(ficha.get("extra") or {}, ensure_ascii=False)[:C.MAX_EXTRA_JSON],
             nivel, 1 if (ficha.get("proximo_passo") or "").strip() else 0,
             relato_curto(relato),
@@ -113,7 +127,7 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq):
                      responsavel, prazo, ficha_uuid, foto_arquivo)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'aberta',%s,%s,%s,%s)
                 ON CONFLICT (numero) DO NOTHING
-            """, (ocorrencia, dbmod.agora(), usuario["login"], "Comercial",
+            """, (ocorrencia, agora(), usuario["login"], "Comercial",
                   "Visita do representante",
                   str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
                   texto_limitado(ficha, "municipio", C.LIMITES_TEXTO),
@@ -129,7 +143,7 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq):
                 (uuid_f, str(ficha.get("cliente_codigo") or "")[:40] or None,
                  cliente_nome, resp["etapa"], metrica_para_etapa(resp["etapa"]),
                  resp["nota"], resp["comentario"], resp["unidade"],
-                 dbmod.agora(), usuario["login"]))
+                 agora(), usuario["login"]))
         cod = str(ficha.get("cliente_codigo") or "")[:40]
         if cod:
             achou = db.execute("""
@@ -139,15 +153,23 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq):
                         WHERE status IN ('planejada','em_andamento')
                           AND (criada_por = %s OR responsavel = %s))
              RETURNING viagem_id
-            """, (uuid_f, dbmod.agora(), cod, usuario["login"], usuario["login"])).fetchone()
+            """, (uuid_f, agora(), cod, usuario["login"], usuario["login"])).fetchone()
             if achou:
                 db.execute("UPDATE fichas SET viagem_id = %s WHERE uuid = %s",
                            (achou["viagem_id"], uuid_f))
-        salvar_anexos(db, uuid_f, ficha.get("anexos"))
+        salvar_anexos(db, uuid_f, ficha.get("anexos"),
+                      salvar_foto=salvar_foto, agora=agora)
     return ocorrencia
 
 
-def receber_lote(db, fichas, usuario, logger=None):
+def receber_lote(db, fichas, usuario, salvar_foto=None, agora=None, logger=None):
+    """Foto e relógio injetáveis. Padrão = adapters reais, para o web não mudar."""
+    if salvar_foto is None:
+        from rep_campo.infra import blob as _blob
+        salvar_foto = _blob.salvar_foto
+    if agora is None:
+        from rep_campo.infra.relogio import agora as _agora
+        agora = _agora
     aceitas, rejeitadas, ocorrencias = [], [], []
     for ficha in (fichas or [])[:50]:
         uuid_f = (ficha.get("uuid") or "").strip()
@@ -163,8 +185,10 @@ def receber_lote(db, fichas, usuario, logger=None):
             aceitas.append(uuid_f)
             continue
         try:
-            foto_arq = blob.salvar_foto(uuid_f, ficha.get("foto"))
-            ocorrencia = _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq)
+            foto_arq = salvar_foto(uuid_f, ficha.get("foto"))
+            ocorrencia = _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome,
+                                       usuario, foto_arq,
+                                       agora=agora, salvar_foto=salvar_foto)
         except Exception:
             if logger is not None:
                 logger.exception("ficha %s recusada", uuid_f)

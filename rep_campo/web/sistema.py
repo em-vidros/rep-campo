@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Páginas públicas, foto e saúde."""
+"""Páginas públicas, foto e saúde. Borda fina: sem SQL aqui."""
 import os
 
 from flask import Blueprint, Response, current_app, jsonify, render_template, send_from_directory, session
 
 from rep_campo.dominio import catalogos as C
 from rep_campo.infra import blob, db as dbmod
+from rep_campo.infra import repositorios as repo
+from rep_campo.infra.relogio import agora
 from rep_campo.web.acesso import login_obrigatorio
 
 bp = Blueprint("sistema", __name__)
@@ -54,8 +56,8 @@ def ping():
 @bp.route("/saude")
 def saude():
     try:
-        n = dbmod.get_db().execute("SELECT COUNT(*) c FROM clientes").fetchone()["c"]
-        return jsonify({"ok": True, "clientes": n, "hora": dbmod.agora()})
+        n = repo.contar_clientes(dbmod.get_db())
+        return jsonify({"ok": True, "clientes": n, "hora": agora()})
     except Exception:
         current_app.logger.exception("saude falhou")
         return jsonify({"ok": False, "erro": "banco_indisponivel"}), 500

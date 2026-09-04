@@ -6,6 +6,7 @@ from flask import jsonify, redirect, request, session, url_for
 
 from rep_campo.dominio.catalogos import PAPEIS_GESTAO
 from rep_campo.infra import db as dbmod
+from rep_campo.infra import repositorios as repo
 
 
 def eh_gestor():
@@ -25,9 +26,7 @@ def sessao_valida():
     """
     if "uid" not in session:
         return False
-    row = dbmod.get_db().execute(
-        "SELECT papel, ativo FROM usuarios WHERE id = %s", (session["uid"],)
-    ).fetchone()
+    row = repo.papel_ativo(dbmod.get_db(), session["uid"])
     if not row or not row["ativo"]:
         session.clear()
         return False

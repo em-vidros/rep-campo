@@ -11,12 +11,19 @@ def carregar_env():
     if not os.path.exists(caminho):
         return
     with open(caminho, encoding="utf-8") as fh:
-        for linha in fh:
-            linha = linha.strip()
+        for bruta in fh:
+            linha = bruta.strip()
             if not linha or linha.startswith("#") or "=" not in linha:
                 continue
+            if linha.startswith("export "):
+                linha = linha[7:].lstrip()
             chave, valor = linha.split("=", 1)
-            os.environ.setdefault(chave.strip(), valor.strip().strip('"').strip("'"))
+            chave = chave.strip()
+            valor = valor.strip()
+            if len(valor) >= 2 and valor[0] == valor[-1] and valor[0] in "\"'":
+                valor = valor[1:-1]
+            if chave:
+                os.environ.setdefault(chave, valor)
 
 
 def secret_key():

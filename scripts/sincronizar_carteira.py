@@ -34,7 +34,7 @@ import psycopg
 import importar_carteira as base   # reaproveita leitura de CSV/JSON legada
 from rep_campo.aplicacao.carteira import corrigir_pela_planilha, diff
 from rep_campo.infra.alertas import avisar
-from rep_campo.infra.db import agora as _agora
+from rep_campo.infra.relogio import agora as _agora
 
 SQL_UPSERT = """
     INSERT INTO clientes (codigo, nome, cidade, rota, tabela, vendedor,

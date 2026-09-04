@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""Login, logout e troca de senha."""
+"""Login, logout e troca de senha. Borda fina: SQL em repositórios."""
 from flask import Blueprint, render_template, request, redirect, session, url_for
 
 from rep_campo.dominio import catalogos as C
 from rep_campo.infra import db as dbmod
+from rep_campo.infra import repositorios as repo
 from rep_campo.infra import seguranca
 from rep_campo.web.acesso import login_obrigatorio, origem_visitante
 
@@ -22,9 +23,7 @@ def login():
                 erro="Muitas tentativas. Tente de novo em 15 minutos."), 429
         login_txt = (request.form.get("login") or "").strip().lower()
         senha = request.form.get("senha") or ""
-        row = db.execute(
-            "SELECT * FROM usuarios WHERE login = %s AND ativo = 1", (login_txt,)
-        ).fetchone()
+        row = repo.usuario_ativo_por_login(db, login_txt)
         if row and seguranca.confere_senha(row["senha_hash"], senha):
             seguranca.limpar_falhas(db, origem)
             session.clear()
@@ -57,8 +56,7 @@ def conta():
         nova = request.form.get("nova") or ""
         repetir = request.form.get("repetir") or ""
         db = dbmod.get_db()
-        row = db.execute("SELECT senha_hash FROM usuarios WHERE id = %s",
-                         (session["uid"],)).fetchone()
+        row = repo.senha_hash_por_uid(db, session["uid"])
         if not row or not seguranca.confere_senha(row["senha_hash"], atual):
             erro = "Senha atual incorreta."
         elif len(nova) < C.SENHA_MIN:
@@ -68,8 +66,7 @@ def conta():
         elif nova == atual:
             erro = "A senha nova tem que ser diferente da atual."
         else:
-            db.execute("UPDATE usuarios SET senha_hash = %s WHERE id = %s",
-                       (seguranca.hash_senha(nova), session["uid"]))
+            repo.atualizar_senha(db, session["uid"], seguranca.hash_senha(nova))
             db.commit()
             aviso = "Senha alterada."
     return render_template("conta.html", aviso=aviso, erro=erro,

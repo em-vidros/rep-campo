@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
-"""Postgres. O esquema mora no setup_db; aqui só conexão e relógio."""
+"""Postgres. Conexão por requisição; o esquema mora em scripts/setup_db.py.
+
+O relógio canônico mora em `infra/relogio.py`. `agora` segue aqui como alias
+para não quebrar quem já importa de `db`.
+"""
 import os
-from datetime import datetime, timezone
 
 import psycopg
 from flask import g
 from psycopg.rows import dict_row
 
-
-def agora():
-    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+from rep_campo.infra.relogio import agora  # noqa: F401 (alias canônico)
 
 
 def conectar(url=None):

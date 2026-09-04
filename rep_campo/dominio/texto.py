@@ -15,6 +15,11 @@ _EXPANSOES = [
 ]
 _CORRECOES = {"araguaiina": "araguaina"}
 
+# Nomes canônicos: `rotas_oficiais` (gerado) e o resto do código importam
+# estes em vez de copiar a tabela. Os `_` acima seguem como alias interno.
+EXPANSOES_CIDADE = _EXPANSOES
+CORRECOES_CIDADE = _CORRECOES
+
 
 def norm(txt):
     t = unicodedata.normalize("NFKD", str(txt or "")).encode("ascii", "ignore").decode()

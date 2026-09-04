@@ -2,13 +2,14 @@
 """Núcleo da sincronização de carteira, sem CLI nem alerta."""
 from rep_campo.dominio import rotas_oficiais
 from rep_campo.dominio.carteira import curva_abc
+from rep_campo.dominio.texto import chave_cidade
 
 
 def corrigir_pela_planilha(clientes):
     corrigidas, sem_mapa, da_raposa = {}, set(), set()
     for c in clientes:
         cidade = c.get("cidade")
-        if rotas_oficiais._chave(c.get("rota")) in ("sem rota", ""):
+        if chave_cidade(c.get("rota")) in ("sem rota", ""):
             c["rota"] = ""
         if not rotas_oficiais.e_da_base_itz(cidade):
             if cidade:
@@ -16,7 +17,7 @@ def corrigir_pela_planilha(clientes):
             continue
         oficial = rotas_oficiais.rota_da_cidade(cidade) or ""
         atual = (c.get("rota") or "").strip()
-        if rotas_oficiais._chave(atual) != rotas_oficiais._chave(oficial):
+        if chave_cidade(atual) != chave_cidade(oficial):
             de = atual or "(sem rota)"
             para = oficial or "(sem rota)"
             corrigidas[(de, para)] = corrigidas.get((de, para), 0) + 1

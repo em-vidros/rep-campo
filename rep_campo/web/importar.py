@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Importação da planilha oficial de rotas pela tela (só admin)."""
-from collections import Counter
+"""Importação da planilha oficial de rotas pela tela (só admin). Borda fina."""
 from io import BytesIO
 
 from flask import Blueprint, jsonify, render_template, request, session
 
 from rep_campo.dominio import catalogos as C
-from rep_campo.dominio.texto import chave_cidade
 from rep_campo.infra import db as dbmod
+from rep_campo.infra import repositorios as repo
+from rep_campo.infra.relogio import agora
 from rep_campo.web.acesso import admin_obrigatorio
 
 bp = Blueprint("importar", __name__)
@@ -50,21 +50,7 @@ def receber_planilha():
     if not linhas:
         return jsonify({"erro": "planilha_vazia"}), 400
 
-    db = dbmod.get_db()
-    db.execute("DELETE FROM rotas_cidades")
-    for cidade, base, rota, tabela in [(l + ["", "", ""])[:4] for l in linhas]:
-        db.execute("""INSERT INTO rotas_cidades (chave, cidade, base, rota, tabela,
-                      atualizado_em) VALUES (%s,%s,%s,%s,%s,%s)
-                      ON CONFLICT (chave) DO UPDATE SET cidade=excluded.cidade,
-                      base=excluded.base, rota=excluded.rota, tabela=excluded.tabela,
-                      atualizado_em=excluded.atualizado_em""",
-                   (chave_cidade(cidade), cidade, base, rota, tabela, dbmod.agora()))
-    db.commit()
-
-    itz = db.execute("SELECT COUNT(*) c FROM rotas_cidades WHERE LOWER(base)='imperatriz'").fetchone()["c"]
-    rotas = [r["rota"] for r in db.execute(
-        "SELECT DISTINCT rota FROM rotas_cidades WHERE LOWER(base)='imperatriz' "
-        "AND rota <> '' AND LOWER(rota) <> 'sem rota' ORDER BY rota")]
+    itz, rotas = repo.substituir_rotas(dbmod.get_db(), linhas, agora())
     return jsonify({"ok": True, "cidades": len(linhas), "base_itz": itz,
                     "rotas": rotas, "arquivo": arq.filename})
 
@@ -73,29 +59,10 @@ def receber_planilha():
 @admin_obrigatorio
 def aplicar():
     db = dbmod.get_db()
-    mapa = {r["chave"]: r for r in db.execute("SELECT * FROM rotas_cidades")}
+    mapa = repo.mapa_rotas(db)
     if not mapa:
         return jsonify({"erro": "importe_a_planilha_antes"}), 400
-
-    corrigidos, fora, outra_base = [], [], []
-    for c in db.execute("SELECT codigo, cidade, rota FROM clientes WHERE ativo = 1"):
-        m = mapa.get(chave_cidade(c["cidade"]))
-        if not m:
-            fora.append(c["cidade"])
-            continue
-        if (m["base"] or "").lower() != "imperatriz":
-            outra_base.append(c["cidade"])
-            continue
-        nova = "" if (m["rota"] or "").strip().lower() in ("", "sem rota") else m["rota"].strip()
-        atual = (c["rota"] or "").strip()
-        if chave_cidade(atual) != chave_cidade(nova):
-            db.execute("UPDATE clientes SET rota = %s, tabela = COALESCE(NULLIF(%s,''), tabela) "
-                       "WHERE codigo = %s", (nova, m["tabela"], c["codigo"]))
-            corrigidos.append({"cidade": c["cidade"], "de": atual or "(sem rota)",
-                               "para": nova or "(sem rota)"})
-    db.commit()
-
-    resumo = Counter((x["de"], x["para"]) for x in corrigidos)
+    corrigidos, resumo, fora, outra_base = repo.aplicar_mapa_rotas(db, mapa)
     return jsonify({
         "ok": True, "corrigidos": len(corrigidos),
         "resumo": [{"de": d, "para": p, "clientes": n}

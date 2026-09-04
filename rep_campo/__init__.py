@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
-"""REP Campo. Camadas: dominio (regras puras) -> aplicacao (casos de uso)
--> infra (db, blob, seguranca) -> web (Flask). Dependência só para dentro."""
+"""REP Campo. Hexagonal enxuto.
+
+Dentro: `dominio` (regras puras + portas) <- `aplicacao` (casos de uso).
+Fora: `infra` (Postgres, Blob, relógio, segurança) e `web` (Flask) são
+adapters. `aplicacao` nunca importa `infra` no topo — recebe foto/relógio
+por argumento. `web` nunca monta SQL — chama `aplicacao` ou
+`infra/repositorios.py`. Dependência só para dentro, rumo ao centro."""
 from flask import Flask
 
 from rep_campo import config as _config
