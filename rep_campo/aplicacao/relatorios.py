@@ -106,6 +106,8 @@ def montar_sugestao(db, cidades=None, municipio=None, rota=None,
             oc_abertas=r["oc_abertas"] or 0,
             pior_nota=r["pior_nota"],
             curva=r["curva"],
+            recados_abertos=r.get("recados_abertos") or 0,
+            recado_de=r.get("recado_de"),
         )
         peso, motivos = pontuar_cliente({
             "dias_sem_comprar": sinal.dias_sem_comprar,
@@ -113,6 +115,8 @@ def montar_sugestao(db, cidades=None, municipio=None, rota=None,
             "oc_abertas": sinal.oc_abertas,
             "pior_nota": sinal.pior_nota,
             "curva": sinal.curva,
+            "recados_abertos": sinal.recados_abertos,
+            "recado_de": sinal.recado_de,
         }, dias, ciclo)
         if not motivos:
             continue
@@ -124,11 +128,12 @@ def montar_sugestao(db, cidades=None, municipio=None, rota=None,
             "ultima_compra": r["ultima_compra"].isoformat() if r["ultima_compra"] else None,
             "dias_sem_comprar": dias_sem_comprar, "pedidos_12m": r["pedidos_12m"],
             "peso": round(peso), "motivo": " · ".join(motivos),
+            "recados_abertos": sinal.recados_abertos,
         })
     if so_parados:
         saida = [x for x in saida
                  if (x["dias_sem_comprar"] or 0) > 30 or not x["vol_12m"]]
-    saida.sort(key=lambda x: -x["peso"])
+    saida.sort(key=lambda x: (-(1 if x["recados_abertos"] else 0), -x["peso"]))
     return {"clientes": saida[:limite], "total": len(saida),
             "municipios": sorted({x["cidade"] for x in saida if x["cidade"]}),
             "rotas": sorted({x["rota"] for x in saida if x["rota"]})}

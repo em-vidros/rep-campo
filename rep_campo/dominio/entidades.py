@@ -23,6 +23,8 @@ class SinalSugestao:
     oc_abertas: int = 0
     pior_nota: int | None = None
     curva: str | None = None
+    recados_abertos: int = 0
+    recado_de: str | None = None
 
 
 @dataclass
