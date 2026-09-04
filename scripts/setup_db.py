@@ -198,6 +198,25 @@ TABELAS = [
             resposta TEXT,
             ficha_uuid TEXT
         )"""),
+    # Preco do concorrente, uma linha por item pesquisado. Sai da ficha do tipo
+    # "preco" na hora em que ela e aceita: dentro do JSON da ficha o dado existe
+    # mas nao se consulta - nao da para perguntar quanto o Globo cobrava em
+    # Imperatriz em julho. Todos os valores em R$/m2.
+    ("precos_concorrencia", """
+        CREATE TABLE IF NOT EXISTS precos_concorrencia (
+            id INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+            ficha_uuid TEXT NOT NULL,
+            coletado_em TEXT NOT NULL,
+            usuario_login TEXT NOT NULL,
+            concorrente TEXT NOT NULL,
+            item TEXT NOT NULL,
+            preco NUMERIC(12,2) NOT NULL,
+            municipio TEXT,
+            rota TEXT,
+            cliente_codigo TEXT,
+            condicao_pagamento TEXT,
+            prazo_entrega TEXT
+        )"""),
 ]
 
 INDICES = [
@@ -220,6 +239,9 @@ INDICES = [
     "CREATE INDEX IF NOT EXISTS ix_clientes_nome ON clientes(nome)",
     "CREATE INDEX IF NOT EXISTS ix_recados_para ON recados(para_login, status)",
     "CREATE INDEX IF NOT EXISTS ix_recados_cliente ON recados(cliente_codigo, status)",
+    "CREATE INDEX IF NOT EXISTS ix_precos_conc ON precos_concorrencia(concorrente, item)",
+    "CREATE INDEX IF NOT EXISTS ix_precos_data ON precos_concorrencia(coletado_em)",
+    "CREATE INDEX IF NOT EXISTS ix_precos_ficha ON precos_concorrencia(ficha_uuid)",
 ]
 
 

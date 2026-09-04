@@ -546,3 +546,63 @@ def contagem_recados(db, para_login, pendentes):
                COUNT(*) FILTER (WHERE cliente_codigo IS NOT NULL) AS missoes
           FROM recados WHERE para_login = %s AND status = ANY(%s)""",
         (para_login, list(pendentes))).fetchone()
+
+
+# --------------------------------------------------- precos da concorrencia
+
+def precos_ultimos(db, concorrente=None, item=None, municipio=None, desde=None):
+    """Ultimo preco de cada combinacao concorrente x item x municipio.
+
+    DISTINCT ON e do Postgres: com o ORDER BY abaixo ele entrega a linha mais
+    recente de cada grupo sem subconsulta.
+    """
+    filtros, args = [], []
+    if concorrente:
+        filtros.append("concorrente = %s"); args.append(concorrente)
+    if item:
+        filtros.append("item = %s"); args.append(item)
+    if municipio:
+        filtros.append("municipio = %s"); args.append(municipio)
+    if desde:
+        filtros.append("coletado_em >= %s"); args.append(desde)
+    onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    return [dict(r) for r in db.execute("""
+        SELECT DISTINCT ON (concorrente, item, municipio)
+               concorrente, item, municipio, rota, preco, coletado_em,
+               usuario_login, condicao_pagamento, prazo_entrega
+          FROM precos_concorrencia %s
+         ORDER BY concorrente, item, municipio, coletado_em DESC""" % onde, args)]
+
+
+def precos_serie(db, concorrente, item):
+    return [dict(r) for r in db.execute("""
+        SELECT LEFT(coletado_em, 7) AS mes, municipio,
+               ROUND(AVG(preco), 2) AS media, COUNT(*) AS coletas
+          FROM precos_concorrencia
+         WHERE concorrente = %s AND item = %s
+         GROUP BY mes, municipio ORDER BY mes DESC, municipio""",
+        (concorrente, item))]
+
+
+def precos_onde_atua(db):
+    """Area de influencia observada: onde cada concorrente apareceu de fato,
+    e nao onde alguem cadastrou que ele atua."""
+    return [dict(r) for r in db.execute("""
+        SELECT concorrente,
+               COALESCE(NULLIF(TRIM(municipio),''),'sem cidade') AS municipio,
+               COALESCE(NULLIF(TRIM(rota),''),'sem rota') AS rota,
+               COUNT(*) AS coletas, MAX(coletado_em) AS visto_em
+          FROM precos_concorrencia
+         GROUP BY concorrente, municipio, rota
+         ORDER BY concorrente, visto_em DESC""")]
+
+
+def precos_opcoes(db):
+    conc = [r["concorrente"] for r in db.execute(
+        "SELECT DISTINCT concorrente FROM precos_concorrencia ORDER BY concorrente")]
+    itens = [r["item"] for r in db.execute(
+        "SELECT DISTINCT item FROM precos_concorrencia ORDER BY item")]
+    cidades = [r["municipio"] for r in db.execute(
+        "SELECT DISTINCT municipio FROM precos_concorrencia "
+        "WHERE municipio IS NOT NULL AND TRIM(municipio) <> '' ORDER BY municipio")]
+    return {"concorrentes": conc, "itens": itens, "municipios": cidades}

@@ -196,3 +196,32 @@ tbody tr.nunca{background:#fdecea}
 .selo.aberto{background:var(--alerta)}
 .selo.lido{background:var(--aviso)}
 .selo.concluido{background:var(--ok)}
+
+/* ---- painel de precos ---- */
+.filtros{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.filtros label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--cinza)}
+.filtros select,.filtros input{
+  padding:6px 9px;border:1px solid var(--borda);border-radius:8px;font-size:.9rem
+}
+.rolagem{overflow-x:auto}
+.tabela{width:100%;border-collapse:collapse;font-size:.9rem}
+.tabela th{
+  text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--cinza);border-bottom:1px solid var(--borda);padding:6px 8px;white-space:nowrap
+}
+.tabela td{padding:7px 8px;border-bottom:1px solid #f0eee9}
+.tabela td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+/* idade da informacao: preco de tres meses nao sustenta negociacao de hoje */
+.idade{
+  font-size:.72rem;padding:2px 7px;border-radius:10px;font-weight:700;
+  white-space:nowrap;color:#fff;background:var(--cinza)
+}
+.idade.fresco{background:var(--ok)}
+.idade.morno{background:var(--aviso)}
+.idade.velho{background:var(--alerta)}
+.chips{display:flex;gap:8px;flex-wrap:wrap}
+.chip-lugar{
+  display:flex;flex-direction:column;gap:1px;background:#f6f4ef;
+  border:1px solid var(--borda);border-radius:8px;padding:6px 10px;font-size:.88rem
+}
+.chip-lugar small{color:var(--cinza);font-size:.72rem}

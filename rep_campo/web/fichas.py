@@ -36,6 +36,8 @@ def bootstrap():
         "problemas": C.PROBLEMAS_TECNICOS,
         "responsaveis": C.RESPONSAVEIS,
         "cesta_preco": C.CESTA_PRECO,
+        "concorrentes": C.CONCORRENTES,
+        "unidade_preco": C.UNIDADE_PRECO,
         "processos_csat": C.PROCESSOS_CSAT,
         "expedicoes": C.EXPEDICOES,
         "tipos_evidencia": C.TIPOS_EVIDENCIA,

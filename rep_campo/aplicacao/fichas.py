@@ -8,6 +8,7 @@ import json
 from datetime import datetime, timezone
 
 from rep_campo.dominio import catalogos as C
+from rep_campo.dominio import precos as dom_precos
 from rep_campo.dominio.experiencia import metrica_para_etapa
 from rep_campo.dominio.ocorrencias import numero_formatado
 from rep_campo.dominio.texto import RE_UUID, num_float, texto_limitado
@@ -136,6 +137,35 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
                   texto_limitado(ficha, "prox_responsavel", C.LIMITES_TEXTO),
                   texto_limitado(ficha, "prox_data", C.LIMITES_TEXTO),
                   uuid_f, foto_arq))
+        # Ficha de preco vira serie historica consultavel. Dentro do JSON o dado
+        # existe mas nao se pergunta nada a ele.
+        if tipo == "preco":
+            extra_p = ficha.get("extra") or {}
+            linhas_preco = dom_precos.linhas_de_preco(extra_p)
+            if linhas_preco:
+                cod = str(ficha.get("cliente_codigo") or "")[:40] or None
+                cidade = texto_limitado(ficha, "municipio", C.LIMITES_TEXTO)
+                rota = None
+                if cod:
+                    achado = db.execute(
+                        "SELECT rota FROM clientes WHERE codigo = %s", (cod,)).fetchone()
+                    rota = (achado or {}).get("rota")
+                # apaga antes de gravar: a fila offline pode reenviar a mesma
+                # ficha se a rede cair no meio, e a serie nao pode duplicar
+                db.execute("DELETE FROM precos_concorrencia WHERE ficha_uuid = %s",
+                           (uuid_f,))
+                for l in linhas_preco:
+                    db.execute("""
+                        INSERT INTO precos_concorrencia
+                            (ficha_uuid, coletado_em, usuario_login, concorrente,
+                             item, preco, municipio, rota, cliente_codigo,
+                             condicao_pagamento, prazo_entrega)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                        (uuid_f, agora(), usuario["login"], l["concorrente"],
+                         l["item"], l["preco"], cidade, rota, cod,
+                         str(extra_p.get("condicao_pagamento") or "")[:120] or None,
+                         str(extra_p.get("prazo_entrega") or "")[:120] or None))
+
         for resp in _respostas(ficha, etapa, nota):
             db.execute("""INSERT INTO experiencia (ficha_uuid, cliente_codigo,
                 cliente_nome, etapa, metrica, nota, comentario, unidade,

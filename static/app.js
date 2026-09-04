@@ -105,7 +105,9 @@ const CAMPOS = {
     { id: 'interesse', rot: 'Interesse', tipo: 'select', ops: ['1 - nenhum', '2', '3', '4', '5 - alto'] },
   ],
   preco: [
-    { id: 'concorrente', rot: 'Concorrente pesquisado', tipo: 'text' },
+    { id: 'concorrente', rot: 'Concorrente pesquisado', tipo: 'concorrentes' },
+    { id: 'concorrente_outro', rot: 'Qual concorrente?', tipo: 'text',
+      ph: 'preencha so se marcou "Outro"' },
     { id: 'itens', rot: 'Itens e precos', tipo: 'itens' },
     { id: 'condicao_pagamento', rot: 'Condicao de pagamento praticada', tipo: 'text' },
     { id: 'prazo_entrega', rot: 'Prazo de entrega praticado', tipo: 'text' },
@@ -141,6 +143,12 @@ function montarCampos(tipo) {
         c.ops.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
     } else if (c.tipo === 'textarea') {
       el = document.createElement('textarea'); el.rows = 3;
+    } else if (c.tipo === 'concorrentes') {
+      // lista fechada: nome digitado a mao vira "Globo", "globo" e "Vidros
+      // Globo", e ai nada se compara ao longo do tempo
+      el = document.createElement('select');
+      el.innerHTML = '<option value=""></option>' +
+        (CFG.concorrentes || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
     } else if (c.tipo === 'problemas') {
       el = document.createElement('select');
       el.innerHTML = '<option value=""></option>' +
@@ -156,13 +164,13 @@ function montarCampos(tipo) {
         grupoAtual = x.grupo;
         return cab + `<div class="linha-item">
           <span class="nome-item">${esc(x.item)}</span>
-          <input placeholder="R$" inputmode="decimal" data-i-preco
+          <input placeholder="R$/m2" inputmode="decimal" data-i-preco
                  data-i-nome-fixo="${esc(x.item)}">
         </div>`;
       }).join('');
       el.innerHTML = linhas +
         '<div class="grupo-cesta">Outros itens</div>' +
-        '<div class="dupla"><input placeholder="item" data-i-nome><input placeholder="R$" inputmode="decimal" data-i-preco></div>'.repeat(2) +
+        '<div class="dupla"><input placeholder="item" data-i-nome><input placeholder="R$/m2" inputmode="decimal" data-i-preco></div>'.repeat(2) +
         '<button type="button" class="mini" id="btn-mais-item">+ item</button>';
     } else {
       el = document.createElement('input');
@@ -178,7 +186,7 @@ function montarCampos(tipo) {
   if (btn) btn.onclick = () => {
     const d = document.createElement('div');
     d.className = 'dupla';
-    d.innerHTML = '<input placeholder="item" data-i-nome><input placeholder="R$" inputmode="decimal" data-i-preco>';
+    d.innerHTML = '<input placeholder="item" data-i-nome><input placeholder="R$/m2" inputmode="decimal" data-i-preco>';
     btn.parentNode.insertBefore(d, btn);
   };
   const obrig = FOTO_OBRIGATORIA.includes(tipo);

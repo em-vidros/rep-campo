@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>REP Campo - Preços da concorrência</title>
+<meta name="theme-color" content="#0f3d2e">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="stylesheet" href="/static/painel.css">
+</head>
+<body class="painel">
+<header class="topo">
+  <div class="topo-linha">
+    <div class="marca"><img src="/static/logo_em_vidros.svg" alt="EM Vidros" class="logo">
+      <span class="marca-app">REP <b>Campo</b></span> <em>preços</em></div>
+    <div class="topo-acoes">
+      <a class="sair" href="/painel">painel</a>
+      <a class="sair" href="/recados">recados</a>
+      <a class="sair" href="/viagens">viagens</a>
+      <a class="sair" href="/logout">sair</a>
+    </div>
+  </div>
+</header>
+
+<main class="conteudo">
+  <div id="msg"></div>
+
+  <nav class="abas">
+    <button class="aba ativa" data-tela="tabela">Último preço</button>
+    <button class="aba" data-tela="atuacao">Onde cada um atua</button>
+  </nav>
+
+  <section id="tela-tabela" class="tela ativa">
+    <div class="filtros">
+      <label>Concorrente <select id="f-concorrente"><option value="">todos</option></select></label>
+      <label>Item <select id="f-item"><option value="">todos</option></select></label>
+      <label>Cidade <select id="f-municipio"><option value="">todas</option></select></label>
+      <label>Coletado a partir de <input id="f-desde" type="date"></label>
+    </div>
+    <p class="dica">Todos os valores em <b>R$/m²</b>. "Eng" é sob medida;
+      "pad" é peça pronta em medida padrão. A idade da informação é o que
+      decide se ela ainda vale — preço de três meses atrás não sustenta
+      negociação de hoje.</p>
+    <div id="tabela-precos"><p class="dica">carregando…</p></div>
+  </section>
+
+  <section id="tela-atuacao" class="tela">
+    <p class="dica">Onde cada concorrente <b>foi visto de fato</b> nas pesquisas
+      — não é cadastro, é o que o campo registrou. Vai ficando mais completo à
+      medida que as visitas de preço acontecem.</p>
+    <div id="lista-atuacao"><p class="dica">carregando…</p></div>
+  </section>
+</main>
+
+<script src="/static/precos.js"></script>
+</body>
+</html>

@@ -22,10 +22,10 @@ def create_app():
     from rep_campo.infra.db import close_db
     app.teardown_appcontext(close_db)
 
-    from rep_campo.web import (auth, fichas, gestor, importar, recados,
-                               sistema, viagens)
+    from rep_campo.web import (auth, fichas, gestor, importar, precos,
+                               recados, sistema, viagens)
     for bp in (auth.bp, fichas.bp, gestor.bp, viagens.bp, importar.bp,
-               recados.bp, sistema.bp):
+               recados.bp, precos.bp, sistema.bp):
         app.register_blueprint(bp)
 
     return app

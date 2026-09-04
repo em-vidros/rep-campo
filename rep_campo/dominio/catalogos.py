@@ -73,17 +73,32 @@ PERGUNTA_EXPERIENCIA = {
     "evento": ("Relacionamento geral", "Como a EM Vidros e vista no mercado hoje?"),
 }
 
+# Cesta fixa de comparacao. "Eng" e sob medida personalizada; "pad" e peca
+# pronta em medida padrao. TODOS os precos sao em R$/m2 - inclusive os padrao,
+# senao box e chapa nao se comparam.
 CESTA_PRECO = [
-    {"grupo": "Engenharia", "item": "Inc 6 Eng"},
-    {"grupo": "Engenharia", "item": "Inc 8 Eng"},
-    {"grupo": "Engenharia", "item": "Inc 10 Eng"},
-    {"grupo": "Engenharia", "item": "Fume/Verde 8 Eng"},
-    {"grupo": "Padrao", "item": "Box Inc 8 pad"},
-    {"grupo": "Padrao", "item": "Jan Inc 8 pad"},
-    {"grupo": "Padrao", "item": "Porta Inc 8 pad"},
-    {"grupo": "Padrao", "item": "Box Fume/Verde 8 pad"},
-    {"grupo": "Padrao", "item": "Jan Fume/Verde 8 pad"},
-    {"grupo": "Padrao", "item": "Porta Fume/Verde 8 pad"},
+    {"grupo": "Engenharia (sob medida)", "item": "Inc 6 Eng"},
+    {"grupo": "Engenharia (sob medida)", "item": "Inc 8 Eng"},
+    {"grupo": "Engenharia (sob medida)", "item": "Inc 10 Eng"},
+    {"grupo": "Engenharia (sob medida)", "item": "Fume/Verde 8 Eng"},
+    {"grupo": "Engenharia (sob medida)", "item": "Fume/Verde 10 Eng"},
+    {"grupo": "Padrao (peca pronta)", "item": "Box Inc pad"},
+    {"grupo": "Padrao (peca pronta)", "item": "Jan/Porta Inc pad"},
+    {"grupo": "Padrao (peca pronta)", "item": "Porta Inc 10 pad"},
+    {"grupo": "Padrao (peca pronta)", "item": "Box Fume/Verde pad"},
+    {"grupo": "Padrao (peca pronta)", "item": "Jan/Porta Fume/Verde pad"},
+]
+
+UNIDADE_PRECO = "R$/m2"
+
+# Lista fechada de proposito: com nome digitado a mao, "Globo", "globo" e
+# "Vidros Globo" viram tres concorrentes e nada se compara ao longo do tempo.
+# "Outro" abre campo livre para o que ainda nao esta aqui.
+CONCORRENTES = [
+    "Globo", "Vitral Lux", "Amazon Maraba", "MT", "Di Cristal", "Temper",
+    "Vitoria", "Amazon Temper THE", "TPV", "GlassMaxi", "Bandeirantes",
+    "Audiolar", "Alupa", "HF", "Quality", "DVN", "NortGlass", "MGG",
+    "Marvite", "Perfal", "Outro",
 ]
 
 TIPOS_EVIDENCIA = [
