@@ -83,13 +83,9 @@ async function carregarRotas() {
   const d = await pegar('/api/rotas');
   if (!d) return;
   ROTAS = d.rotas;
-  // avisa sobre cadastro de outra base, sem esconder o problema
-  if (d.clientes_fora) {
-    const quais = [...new Set(d.fora_da_base.map(x => x.rota))].join(', ');
-    $('msg').innerHTML = `<div class="alerta info">${d.clientes_fora} cliente(s) na carteira
-      com rota de outra base (${esc(quais)}) ficaram fora do planejamento — provável
-      falha de cadastro. Continuam na carteira; só não são sugeridos.</div>`;
-  }
+  // Cliente com rota de outra base fica fora do planejamento e nao se avisa nada:
+  // e cadastro normal, feito por obra pontual, e nao erro. Ele continua na carteira
+  // e aparece na busca da ficha, para quando precisar de visita tecnica.
   $('v-rota').innerHTML = '<option value="">selecione a rota</option>' +
     ROTAS.map(x => `<option value="${esc(x.rota)}">${esc(x.rota)}</option>`).join('');
 
