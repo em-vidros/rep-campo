@@ -574,6 +574,44 @@ def precos_ultimos(db, concorrente=None, item=None, municipio=None, desde=None):
          ORDER BY concorrente, item, municipio, coletado_em DESC""" % onde, args)]
 
 
+def precos_matriz(db, rota=None, municipio=None, cliente=None, desde=None):
+    """Ultimo preco de cada item x concorrente dentro do recorte escolhido.
+
+    O recorte e o que muda a decisao: o Globo cobra uma coisa em Imperatriz e
+    outra em Araguaina. DISTINCT ON entrega a linha mais recente de cada par.
+    """
+    filtros, args = [], []
+    if rota:
+        filtros.append("rota = %s"); args.append(rota)
+    if municipio:
+        filtros.append("municipio = %s"); args.append(municipio)
+    if cliente:
+        filtros.append("cliente_codigo = %s"); args.append(cliente)
+    if desde:
+        filtros.append("coletado_em >= %s"); args.append(desde)
+    onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
+    return [dict(r) for r in db.execute("""
+        SELECT DISTINCT ON (item, concorrente)
+               item, concorrente, preco, municipio, rota, coletado_em, usuario_login
+          FROM precos_concorrencia %s
+         ORDER BY item, concorrente, coletado_em DESC""" % onde, args)]
+
+
+def precos_recortes(db):
+    """Rotas, cidades e clientes que ja tem pesquisa - so eles valem como filtro."""
+    rotas = [r["rota"] for r in db.execute(
+        "SELECT DISTINCT rota FROM precos_concorrencia "
+        "WHERE rota IS NOT NULL AND TRIM(rota) <> '' ORDER BY rota")]
+    cidades = [r["municipio"] for r in db.execute(
+        "SELECT DISTINCT municipio FROM precos_concorrencia "
+        "WHERE municipio IS NOT NULL AND TRIM(municipio) <> '' ORDER BY municipio")]
+    clientes = [dict(r) for r in db.execute("""
+        SELECT DISTINCT p.cliente_codigo AS codigo, c.nome
+          FROM precos_concorrencia p LEFT JOIN clientes c ON c.codigo = p.cliente_codigo
+         WHERE p.cliente_codigo IS NOT NULL ORDER BY c.nome""")]
+    return {"rotas": rotas, "municipios": cidades, "clientes": clientes}
+
+
 def precos_serie(db, concorrente, item):
     return [dict(r) for r in db.execute("""
         SELECT LEFT(coletado_em, 7) AS mes, municipio,

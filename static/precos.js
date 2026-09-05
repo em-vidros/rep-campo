@@ -1,11 +1,11 @@
-/* REP Campo - painel de preco da concorrencia */
+/* REP Campo - comparacao de preco da concorrencia */
 'use strict';
 const $ = id => document.getElementById(id);
 const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 const brl = v => (v || 0).toLocaleString('pt-BR',
-  { style: 'currency', currency: 'BRL', minimumFractionDigits: 2 });
+  { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const dataBr = iso => {
   if (!iso) return '';
@@ -13,84 +13,76 @@ const dataBr = iso => {
   return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : iso;
 };
 
-/* Preco velho engana: quem negocia precisa saber se aquilo ainda vale. */
+/* Preco velho engana quem negocia: a cor diz se aquilo ainda vale. */
 function idade(iso) {
-  if (!iso) return { txt: '', classe: '' };
   const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-  if (dias <= 30) return { txt: `${dias} d`, classe: 'fresco' };
-  if (dias <= 90) return { txt: `${dias} d`, classe: 'morno' };
-  return { txt: `${dias} d`, classe: 'velho' };
+  if (dias <= 30) return { dias, classe: 'fresco' };
+  if (dias <= 90) return { dias, classe: 'morno' };
+  return { dias, classe: 'velho' };
 }
 
 let PRIMEIRA = true;
 
 async function carregar() {
   const q = new URLSearchParams({
-    concorrente: $('f-concorrente').value, item: $('f-item').value,
-    municipio: $('f-municipio').value, desde: $('f-desde').value,
+    rota: $('f-rota').value, municipio: $('f-municipio').value,
+    cliente: $('f-cliente').value, desde: $('f-desde').value,
   });
-  const r = await fetch('/api/precos?' + q);
+  const r = await fetch('/api/precos/matriz?' + q);
   if (!r.ok) {
     $('msg').innerHTML = '<div class="alerta erro">Não consegui carregar os preços.</div>';
     return;
   }
   const d = await r.json();
-
-  if (PRIMEIRA) {
-    encher('f-concorrente', d.concorrentes_catalogo, d.opcoes.concorrentes);
-    encher('f-item', d.cesta, d.opcoes.itens);
-    encher('f-municipio', d.opcoes.municipios, d.opcoes.municipios);
-    PRIMEIRA = false;
-  }
-  desenhar(d.ultimos);
+  if (PRIMEIRA) { encherFiltros(d.recortes); PRIMEIRA = false; }
+  desenhar(d);
 }
 
-/* O filtro mostra tambem o que ainda nao foi pesquisado, marcado - a lacuna e
-   informacao: diz onde falta mandar alguem olhar. */
-function encher(id, catalogo, comDado) {
-  const sel = $(id);
-  const tem = new Set(comDado || []);
-  const atual = sel.value;
-  const primeira = sel.options[0].outerHTML;
-  sel.innerHTML = primeira + (catalogo || []).map(x =>
-    `<option value="${esc(x)}">${esc(x)}${tem.has(x) ? '' : ' (sem pesquisa)'}</option>`).join('');
-  sel.value = atual;
+function encherFiltros(rec) {
+  const opc = (sel, itens, valor, texto) => {
+    const e = $(sel), primeira = e.options[0].outerHTML;
+    e.innerHTML = primeira + itens.map(x =>
+      `<option value="${esc(valor(x))}">${esc(texto(x))}</option>`).join('');
+  };
+  opc('f-rota', rec.rotas, x => x, x => x);
+  opc('f-municipio', rec.municipios, x => x, x => x);
+  opc('f-cliente', rec.clientes, x => x.codigo, x => x.nome || x.codigo);
 }
 
-function desenhar(linhas) {
-  if (!linhas.length) {
-    $('tabela-precos').innerHTML =
-      '<p class="dica">Nenhum preço coletado com esses filtros. Os preços entram '
-      + 'sozinhos quando o representante salva uma ficha do tipo <b>Preço</b>.</p>';
+function desenhar(d) {
+  const alvo = $('grade-precos');
+  if (!d.concorrentes.length) {
+    alvo.innerHTML = '<p class="dica">Nenhum preço pesquisado neste recorte. '
+      + 'Os preços entram sozinhos quando o representante salva uma ficha do tipo '
+      + '<b>Preço</b>.</p>';
+    $('resumo-grade').textContent = '';
     return;
   }
-  const porConcorrente = {};
-  linhas.forEach(l => (porConcorrente[l.concorrente] ||= []).push(l));
+  $('resumo-grade').innerHTML =
+    `<b>${d.concorrentes.length}</b> concorrente(s) &middot; `
+    + `<b>${d.coletas}</b> preço(s) neste recorte`;
 
-  $('tabela-precos').innerHTML = Object.entries(porConcorrente)
-    .sort((a, b) => a[0].localeCompare(b[0], 'pt-BR'))
-    .map(([conc, itens]) => `
-      <section class="cartao">
-        <h2>${esc(conc)}</h2>
-        <div class="rolagem">
-        <table class="tabela">
-          <thead><tr><th>Item</th><th>R$/m²</th><th>Cidade</th><th>Rota</th>
-            <th>Coletado</th><th>Idade</th><th>Condição</th></tr></thead>
-          <tbody>${itens.map(l => {
-            const i = idade(l.coletado_em);
-            return `<tr>
-              <td><b>${esc(l.item)}</b></td>
-              <td class="num">${esc(brl(l.preco))}</td>
-              <td>${esc(l.municipio || '-')}</td>
-              <td>${esc(l.rota || '-')}</td>
-              <td>${esc(dataBr(l.coletado_em))}</td>
-              <td><span class="idade ${i.classe}">${esc(i.txt)}</span></td>
-              <td class="dica">${esc(l.condicao_pagamento || '-')}</td>
-            </tr>`;
-          }).join('')}</tbody>
-        </table>
-        </div>
-      </section>`).join('');
+  const cab = d.concorrentes.map(c => `<th>${esc(c)}</th>`).join('');
+
+  const corpo = d.grupos.map(g => {
+    const linhas = g.itens.map(it => {
+      const celulas = d.concorrentes.map(c => {
+        const v = it.precos[c];
+        if (!v) return '<td class="vazia">—</td>';
+        const i = idade(v.coletado_em);
+        const dica = `${dataBr(v.coletado_em)} · ${v.municipio || 'sem cidade'}`
+          + ` · ${i.dias} dias · por ${v.por}`;
+        return `<td class="celula ${i.classe}" title="${esc(dica)}">
+          <b>${esc(brl(v.preco))}</b><small>${i.dias} d</small></td>`;
+      }).join('');
+      return `<tr><th class="item">${esc(it.item)}</th>${celulas}</tr>`;
+    }).join('');
+    return `<tr class="grupo"><th colspan="${d.concorrentes.length + 1}">${esc(g.grupo)}</th></tr>${linhas}`;
+  }).join('');
+
+  alvo.innerHTML = `<div class="rolagem"><table class="grade">
+    <thead><tr><th class="item">Item</th>${cab}</tr></thead>
+    <tbody>${corpo}</tbody></table></div>`;
 }
 
 /* ------------------------------------------------------------ onde atua */
@@ -100,8 +92,7 @@ async function carregarAtuacao() {
   if (!r.ok) return;
   const d = await r.json();
   if (!d.concorrentes.length) {
-    $('lista-atuacao').innerHTML =
-      '<p class="dica">Ainda não há pesquisa de preço registrada.</p>';
+    $('lista-atuacao').innerHTML = '<p class="dica">Ainda não há pesquisa de preço registrada.</p>';
     return;
   }
   $('lista-atuacao').innerHTML = d.concorrentes.map(c => `
@@ -114,7 +105,7 @@ async function carregarAtuacao() {
     </section>`).join('');
 }
 
-/* --------------------------------------------------------------- abas */
+/* --------------------------------------------------------------- telas */
 
 document.querySelectorAll('.aba').forEach(b => b.onclick = () => {
   document.querySelectorAll('.aba').forEach(x => x.classList.remove('ativa'));
@@ -124,7 +115,12 @@ document.querySelectorAll('.aba').forEach(b => b.onclick = () => {
   if (b.dataset.tela === 'atuacao') carregarAtuacao();
 });
 
-['f-concorrente', 'f-item', 'f-municipio', 'f-desde']
+['f-rota', 'f-municipio', 'f-cliente', 'f-desde']
   .forEach(id => $(id).addEventListener('change', carregar));
+
+$('btn-limpar').onclick = () => {
+  ['f-rota', 'f-municipio', 'f-cliente', 'f-desde'].forEach(id => ($(id).value = ''));
+  carregar();
+};
 
 carregar();

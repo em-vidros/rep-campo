@@ -197,24 +197,49 @@ tbody tr.nunca{background:#fdecea}
 .selo.lido{background:var(--aviso)}
 .selo.concluido{background:var(--ok)}
 
-/* ---- painel de precos ---- */
-.filtros{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px}
-.filtros label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--cinza)}
+/* ---- painel de precos: grade de comparacao ---- */
+.filtros{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px}
+.filtros label{display:flex;flex-direction:column;gap:3px;font-size:.78rem;color:var(--cinza)}
 .filtros select,.filtros input{
-  padding:6px 9px;border:1px solid var(--borda);border-radius:8px;font-size:.9rem
+  padding:6px 9px;border:1px solid var(--borda);border-radius:8px;font-size:.9rem;
+  background:#fff;max-width:200px
 }
-.rolagem{overflow-x:auto}
-.tabela{width:100%;border-collapse:collapse;font-size:.9rem}
-.tabela th{
-  text-align:left;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;
-  color:var(--cinza);border-bottom:1px solid var(--borda);padding:6px 8px;white-space:nowrap
+.rolagem{overflow-x:auto;border:1px solid var(--borda);border-radius:10px;background:#fff}
+
+.grade{border-collapse:collapse;font-size:.88rem;width:100%}
+.grade thead th{
+  position:sticky;top:0;background:#f6f4ef;z-index:2;
+  font-size:.74rem;text-transform:uppercase;letter-spacing:.5px;color:var(--verde);
+  padding:9px 10px;text-align:center;white-space:nowrap;border-bottom:1px solid var(--borda)
 }
-.tabela td{padding:7px 8px;border-bottom:1px solid #f0eee9}
-.tabela td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+/* a coluna do item fica presa: rolando de lado, nao se perde a linha */
+.grade th.item{
+  position:sticky;left:0;background:#f6f4ef;z-index:1;text-align:left;
+  font-weight:600;color:var(--texto);text-transform:none;letter-spacing:0;
+  font-size:.86rem;padding:8px 12px;min-width:150px;border-right:1px solid var(--borda)
+}
+.grade thead th.item{z-index:3}
+.grade tr.grupo th{
+  background:var(--verde);color:#fff;text-align:left;padding:6px 12px;
+  font-size:.72rem;text-transform:uppercase;letter-spacing:.8px;position:static
+}
+.grade td{
+  padding:7px 10px;text-align:center;border-bottom:1px solid #f0eee9;
+  white-space:nowrap;font-variant-numeric:tabular-nums
+}
+.grade tbody tr:hover th.item,.grade tbody tr:hover td{background:#fbfaf7}
+.grade td.vazia{color:#c9c5bd}
+.grade td.celula b{display:block;font-size:.98rem;font-weight:700}
+.grade td.celula small{display:block;font-size:.68rem;color:var(--cinza);margin-top:1px}
 /* idade da informacao: preco de tres meses nao sustenta negociacao de hoje */
+.grade td.celula.fresco{box-shadow:inset 3px 0 0 var(--ok)}
+.grade td.celula.morno{box-shadow:inset 3px 0 0 var(--aviso)}
+.grade td.celula.velho{box-shadow:inset 3px 0 0 var(--alerta)}
+.grade td.celula.velho b{color:var(--alerta)}
+.legenda{margin-top:10px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .idade{
-  font-size:.72rem;padding:2px 7px;border-radius:10px;font-weight:700;
-  white-space:nowrap;color:#fff;background:var(--cinza)
+  font-size:.7rem;padding:2px 7px;border-radius:10px;font-weight:700;color:#fff;
+  background:var(--cinza)
 }
 .idade.fresco{background:var(--ok)}
 .idade.morno{background:var(--aviso)}

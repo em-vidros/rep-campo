@@ -27,22 +27,28 @@
   <div id="msg"></div>
 
   <nav class="abas">
-    <button class="aba ativa" data-tela="tabela">Último preço</button>
+    <button class="aba ativa" data-tela="grade">Comparar preços</button>
     <button class="aba" data-tela="atuacao">Onde cada um atua</button>
   </nav>
 
-  <section id="tela-tabela" class="tela ativa">
+  <section id="tela-grade" class="tela ativa">
     <div class="filtros">
-      <label>Concorrente <select id="f-concorrente"><option value="">todos</option></select></label>
-      <label>Item <select id="f-item"><option value="">todos</option></select></label>
+      <label>Rota <select id="f-rota"><option value="">todas</option></select></label>
       <label>Cidade <select id="f-municipio"><option value="">todas</option></select></label>
+      <label>Cliente <select id="f-cliente"><option value="">todos</option></select></label>
       <label>Coletado a partir de <input id="f-desde" type="date"></label>
+      <button id="btn-limpar" class="mini">limpar</button>
     </div>
-    <p class="dica">Todos os valores em <b>R$/m²</b>. "Eng" é sob medida;
-      "pad" é peça pronta em medida padrão. A idade da informação é o que
-      decide se ela ainda vale — preço de três meses atrás não sustenta
-      negociação de hoje.</p>
-    <div id="tabela-precos"><p class="dica">carregando…</p></div>
+    <p class="dica" id="resumo-grade"></p>
+    <div id="grade-precos"><p class="dica">carregando…</p></div>
+    <p class="dica legenda">
+      Valores em <b>R$/m²</b> &middot; <b>Eng</b> é sob medida, <b>pad</b> é peça pronta.
+      A cor mostra a idade da informação:
+      <span class="idade fresco">até 30 d</span>
+      <span class="idade morno">até 90 d</span>
+      <span class="idade velho">mais velho</span>.
+      Célula vazia é onde ainda falta pesquisar.
+    </p>
   </section>
 
   <section id="tela-atuacao" class="tela">

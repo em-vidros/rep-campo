@@ -27,6 +27,17 @@ def painel():
         desde=(request.args.get("desde") or "").strip()))
 
 
+@bp.route("/api/precos/matriz")
+@gestor_obrigatorio
+def matriz():
+    return jsonify(app_precos.matriz(
+        dbmod.get_db(),
+        rota=(request.args.get("rota") or "").strip(),
+        municipio=(request.args.get("municipio") or "").strip(),
+        cliente=(request.args.get("cliente") or "").strip(),
+        desde=(request.args.get("desde") or "").strip()))
+
+
 @bp.route("/api/precos/onde-atua")
 @gestor_obrigatorio
 def onde_atua():

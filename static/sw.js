@@ -1,5 +1,5 @@
 /* REP Campo - service worker. Cache do app shell para funcionar offline. */
-const CACHE = 'rep-campo-v6';
+const CACHE = 'rep-campo-v7';
 const SHELL = [
   '/static/app.js', '/static/styles.css', '/static/viagens.js',
   '/static/dicas.js', '/static/painel.css', '/static/logo_em_vidros.svg',
