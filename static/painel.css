@@ -250,3 +250,23 @@ tbody tr.nunca{background:#fdecea}
   border:1px solid var(--borda);border-radius:8px;padding:6px 10px;font-size:.88rem
 }
 .chip-lugar small{color:var(--cinza);font-size:.72rem}
+
+/* ---- tela de atualizar precos ---- */
+.grupo-itens{
+  font-size:.72rem;text-transform:uppercase;letter-spacing:.8px;color:var(--verde);
+  font-weight:700;margin:12px 0 6px;padding-bottom:4px;border-bottom:1px solid var(--borda)
+}
+.linha-preco{display:flex;gap:10px;align-items:center;margin-bottom:7px}
+.linha-preco .nome{flex:1;display:flex;flex-direction:column;font-size:.92rem}
+.linha-preco .quando{color:var(--cinza);font-size:.7rem}
+.linha-preco input{
+  width:120px;padding:8px 10px;border:1px solid var(--borda);border-radius:8px;
+  font-size:1rem;text-align:right;font-variant-numeric:tabular-nums
+}
+.linha-preco input:not([value=""]):not(:placeholder-shown){border-color:var(--verde-claro)}
+.linha-preco input[placeholder="nome do item"]{flex:1;text-align:left}
+@media (max-width:520px){
+  .linha-preco input{width:96px}
+  .filtros label{width:100%}
+  .filtros select,.filtros input{max-width:none;width:100%}
+}

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Leitura da pesquisa de preco: o que o painel mostra."""
 from rep_campo.dominio import catalogos as C
+from rep_campo.dominio import precos as D
+from rep_campo.infra.relogio import agora
 from rep_campo.infra import repositorios as repo
 
 
@@ -89,3 +91,67 @@ def serie(db, concorrente, item):
     for l in linhas:
         l["media"] = float(l["media"])
     return linhas
+
+
+# ------------------------------------------------ tela do representante
+
+def formulario(db, concorrente=None, escopo=None, valor=None):
+    """O que a tela de atualizacao precisa: a cesta e, se ja houver pesquisa
+    naquele recorte, o ultimo preco de cada item para ele so corrigir."""
+    conhecidos = {}
+    if concorrente and escopo and valor:
+        conhecidos = repo.precos_do_escopo(db, concorrente, escopo, valor)
+
+    itens = []
+    for x in C.CESTA_PRECO:
+        ant = conhecidos.get(x["item"])
+        itens.append({
+            "grupo": x["grupo"], "item": x["item"],
+            "preco": float(ant["preco"]) if ant else None,
+            "coletado_em": ant["coletado_em"] if ant else None,
+            "por": ant["usuario_login"] if ant else None,
+        })
+    # item que alguem digitou no campo livre e ja virou serie naquele recorte
+    extras = [i for i in conhecidos if i not in {x["item"] for x in C.CESTA_PRECO}]
+    for i in sorted(extras):
+        a = conhecidos[i]
+        itens.append({"grupo": "Outros itens", "item": i, "preco": float(a["preco"]),
+                      "coletado_em": a["coletado_em"], "por": a["usuario_login"]})
+
+    ultimo = next((c for c in conhecidos.values()), None)
+    return {
+        "itens": itens,
+        "concorrentes": C.CONCORRENTES,
+        "opcoes": repo.opcoes_para_pesquisa(db),
+        "unidade": C.UNIDADE_PRECO,
+        "condicao_pagamento": (ultimo or {}).get("condicao_pagamento"),
+        "prazo_entrega": (ultimo or {}).get("prazo_entrega"),
+        "ja_pesquisado": bool(conhecidos),
+    }
+
+
+def registrar(db, usuario_login, dados):
+    conc = D.normalizar_concorrente(dados.get("concorrente"),
+                                    dados.get("concorrente_outro"))
+    if not conc:
+        return None, "sem_concorrente"
+
+    escopo, valor = D.escopo_valido(dados.get("escopo"), dados.get("valor"))
+    if not escopo:
+        return None, "sem_escopo"
+
+    ctx = repo.contexto_do_escopo(db, escopo, valor)
+    if ctx is None:
+        return None, "escopo_desconhecido"
+
+    linhas = D.linhas_digitadas(dados.get("itens"))
+    if not linhas:
+        return None, "sem_precos"
+
+    n = repo.registrar_precos(
+        db, agora(), usuario_login, conc, escopo, valor, linhas,
+        ctx["municipio"], ctx["rota"], ctx["cliente_codigo"],
+        str(dados.get("condicao_pagamento") or "")[:120] or None,
+        str(dados.get("prazo_entrega") or "")[:120] or None)
+    db.commit()
+    return {"gravados": n, "concorrente": conc, "escopo": escopo, "valor": valor}, None

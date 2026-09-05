@@ -62,3 +62,29 @@ def linhas_de_preco(extra):
         if item and preco is not None:
             saida.append({"concorrente": concorrente, "item": item, "preco": preco})
     return saida
+
+
+# ---------------------------------------------------------------- escopo
+
+# Onde o preco vale. O representante escolhe um, e e o que permite consultar
+# depois: o Globo cobra uma coisa em Imperatriz e outra em Araguaina.
+ESCOPOS = ("rota", "cidade", "cliente")
+
+
+def escopo_valido(tipo, valor):
+    t = (tipo or "").strip().lower()
+    v = (valor or "").strip()
+    if t not in ESCOPOS or not v:
+        return None, None
+    return t, v[:120]
+
+
+def linhas_digitadas(itens):
+    """Mesma limpeza da ficha, para o que vem da tela de atualizacao."""
+    saida = []
+    for linha in itens or []:
+        item = str((linha or {}).get("item") or "").strip()[:MAX_ITEM]
+        preco = preco_valido((linha or {}).get("preco"))
+        if item and preco is not None:
+            saida.append({"item": item, "preco": preco})
+    return saida

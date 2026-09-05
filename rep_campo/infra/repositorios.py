@@ -644,3 +644,61 @@ def precos_opcoes(db):
         "SELECT DISTINCT municipio FROM precos_concorrencia "
         "WHERE municipio IS NOT NULL AND TRIM(municipio) <> '' ORDER BY municipio")]
     return {"concorrentes": conc, "itens": itens, "municipios": cidades}
+
+
+def precos_do_escopo(db, concorrente, escopo, valor):
+    """Ultimo preco conhecido de cada item naquele recorte, para a tela abrir ja
+    preenchida: ele corrige o que mudou em vez de digitar tudo de novo."""
+    coluna = {"rota": "rota", "cidade": "municipio", "cliente": "cliente_codigo"}[escopo]
+    return {r["item"]: dict(r) for r in db.execute("""
+        SELECT DISTINCT ON (item) item, preco, coletado_em, usuario_login,
+               condicao_pagamento, prazo_entrega
+          FROM precos_concorrencia
+         WHERE concorrente = %%s AND %s = %%s
+         ORDER BY item, coletado_em DESC""" % coluna, (concorrente, valor))}
+
+
+def registrar_precos(db, coletado_em, usuario_login, concorrente, escopo, valor,
+                     linhas, municipio, rota, cliente_codigo, condicao, prazo):
+    """Grava o que o representante digitou. Cada envio e um registro novo - a
+    serie guarda a historia, e o painel mostra sempre o mais recente."""
+    for l in linhas:
+        db.execute("""
+            INSERT INTO precos_concorrencia
+                (ficha_uuid, coletado_em, usuario_login, concorrente, item, preco,
+                 municipio, rota, cliente_codigo, condicao_pagamento, prazo_entrega,
+                 origem, escopo)
+            VALUES (NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'direto',%s)""",
+            (coletado_em, usuario_login, concorrente, l["item"], l["preco"],
+             municipio, rota, cliente_codigo, condicao, prazo, escopo))
+    return len(linhas)
+
+
+def contexto_do_escopo(db, escopo, valor):
+    """Preenche as outras colunas a partir do que foi escolhido, para o painel
+    poder filtrar por qualquer uma delas depois."""
+    if escopo == "cliente":
+        r = db.execute("SELECT codigo, cidade, rota FROM clientes WHERE codigo = %s",
+                       (valor,)).fetchone()
+        if not r:
+            return None
+        return {"municipio": r["cidade"], "rota": r["rota"], "cliente_codigo": r["codigo"]}
+    if escopo == "cidade":
+        r = db.execute("""SELECT rota FROM clientes
+                           WHERE cidade = %s AND rota IS NOT NULL AND TRIM(rota) <> ''
+                           LIMIT 1""", (valor,)).fetchone()
+        return {"municipio": valor, "rota": (r or {}).get("rota"), "cliente_codigo": None}
+    return {"municipio": None, "rota": valor, "cliente_codigo": None}
+
+
+def opcoes_para_pesquisa(db):
+    """Rotas, cidades e clientes da carteira - o representante escolhe daqui."""
+    rotas = [r["rota"] for r in db.execute(
+        "SELECT DISTINCT TRIM(rota) rota FROM clientes WHERE ativo = 1 "
+        "AND rota IS NOT NULL AND TRIM(rota) <> '' ORDER BY rota")]
+    cidades = [r["cidade"] for r in db.execute(
+        "SELECT DISTINCT cidade FROM clientes WHERE ativo = 1 "
+        "AND cidade IS NOT NULL AND TRIM(cidade) <> '' ORDER BY cidade")]
+    clientes = [dict(r) for r in db.execute(
+        "SELECT codigo, nome, cidade FROM clientes WHERE ativo = 1 ORDER BY nome")]
+    return {"rotas": rotas, "cidades": cidades, "clientes": clientes}

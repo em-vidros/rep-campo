@@ -257,6 +257,11 @@ COLUNAS = [
     "ALTER TABLE clientes ADD COLUMN IF NOT EXISTS pedidos_12m INTEGER",
     # plano de visita local nao e viagem: mesma estrutura, sem estrada
     "ALTER TABLE viagens ADD COLUMN IF NOT EXISTS tipo TEXT DEFAULT 'viagem'",
+    # preco tambem entra pela tela do representante, sem visita nenhuma: ele
+    # descobre por telefone, por proposta que o cliente mostrou, por conversa
+    "ALTER TABLE precos_concorrencia ALTER COLUMN ficha_uuid DROP NOT NULL",
+    "ALTER TABLE precos_concorrencia ADD COLUMN IF NOT EXISTS origem TEXT DEFAULT 'ficha'",
+    "ALTER TABLE precos_concorrencia ADD COLUMN IF NOT EXISTS escopo TEXT",
 ]
 
 
