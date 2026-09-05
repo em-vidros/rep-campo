@@ -35,7 +35,7 @@
 
   <section id="tela-atualizar" class="tela ativa">
     <div class="cartao">
-      <h2>De quem é o preço, e onde vale</h2>
+      <h2>De quem é o preço</h2>
       <div class="filtros">
         <label>Concorrente *
           <select id="p-concorrente"><option value="">escolha</option></select>
@@ -43,27 +43,36 @@
         <label id="wrap-outro" class="oculto">Qual concorrente?
           <input id="p-outro" placeholder="nome do concorrente">
         </label>
-        <label>Esse preço vale para *
-          <select id="p-escopo">
-            <option value="rota">uma rota inteira</option>
-            <option value="cidade">uma cidade</option>
-            <option value="cliente">um cliente</option>
-          </select>
-        </label>
-        <label id="wrap-valor">Qual?
-          <select id="p-valor"><option value="">escolha</option></select>
-        </label>
       </div>
-      <p class="dica" id="aviso-anterior"></p>
     </div>
 
     <div class="cartao">
-      <h2>Preços praticados <span class="dica">em R$/m²</span></h2>
-      <div id="form-itens"><p class="dica">Escolha o concorrente e o local acima.</p></div>
-      <div class="filtros" style="margin-top:12px">
-        <label>Condição de pagamento <input id="p-condicao" placeholder="ex: 28/35/42"></label>
-        <label>Prazo de entrega <input id="p-prazo" placeholder="ex: 5 dias úteis"></label>
+      <h2>Onde esse preço vale</h2>
+      <p class="dica">Escolha a rota para ver as cidades dela e marque as que
+        esse preço cobre. Pode misturar cidades de rotas diferentes — marque
+        numa rota, troque para outra e marque mais.</p>
+      <div class="filtros">
+        <label>Rota
+          <select id="p-rota"><option value="">escolha a rota</option></select>
+        </label>
+        <button id="btn-todas" class="mini">marcar todas desta rota</button>
+        <button id="btn-limpar-cid" class="mini">limpar tudo</button>
       </div>
+      <div id="cidades-rota" class="caixa-cidades">
+        <p class="dica">Escolha uma rota acima.</p>
+      </div>
+      <div id="marcadas" class="marcadas"></div>
+    </div>
+
+    <div class="cartao">
+      <h2>Preço à vista <span class="dica">em R$/m²</span></h2>
+      <p class="dica" id="aviso-anterior"></p>
+      <div id="form-itens"><p class="dica">Escolha o concorrente e as cidades acima.</p></div>
+      <label style="margin-top:14px">Observação
+        <span class="dica">— condição especial de pagamento, prazo, mínimo por pedido</span>
+        <textarea id="p-obs" rows="2" maxlength="600"
+          placeholder="ex: à vista é esse valor; a prazo 28/35/42 sobe 6%. Frete grátis acima de 30 m²."></textarea>
+      </label>
       <button id="btn-salvar" class="btn">Salvar preços</button>
     </div>
   </section>

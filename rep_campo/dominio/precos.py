@@ -64,19 +64,26 @@ def linhas_de_preco(extra):
     return saida
 
 
-# ---------------------------------------------------------------- escopo
+# ------------------------------------------------------------- cobertura
 
-# Onde o preco vale. O representante escolhe um, e e o que permite consultar
-# depois: o Globo cobra uma coisa em Imperatriz e outra em Araguaina.
-ESCOPOS = ("rota", "cidade", "cliente")
+MAX_CIDADES = 200
 
 
-def escopo_valido(tipo, valor):
-    t = (tipo or "").strip().lower()
-    v = (valor or "").strip()
-    if t not in ESCOPOS or not v:
-        return None, None
-    return t, v[:120]
+def cidades_validas(lista):
+    """As cidades que aquele preco cobre.
+
+    O mesmo preco quase nunca vale para uma cidade so: o concorrente pratica a
+    mesma tabela na rota inteira, ou em parte dela mais alguma cidade de outra
+    rota. Por isso a selecao e multipla, e a rota entra so como atalho para
+    marcar as cidades dela de uma vez.
+    """
+    vistas, saida = set(), []
+    for c in (lista or [])[:MAX_CIDADES]:
+        n = str(c or "").strip()[:120]
+        if n and n.lower() not in vistas:
+            vistas.add(n.lower())
+            saida.append(n)
+    return saida
 
 
 def linhas_digitadas(itens):

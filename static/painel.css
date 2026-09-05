@@ -270,3 +270,27 @@ tbody tr.nunca{background:#fdecea}
   .filtros label{width:100%}
   .filtros select,.filtros input{max-width:none;width:100%}
 }
+
+/* ---- selecao de cidades cobertas ---- */
+.caixa-cidades{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:2px;
+  max-height:260px;overflow-y:auto;border:1px solid var(--borda);border-radius:10px;
+  padding:8px;background:#fff
+}
+.cid{display:flex;align-items:center;gap:8px;padding:5px 7px;border-radius:6px;font-size:.9rem}
+.cid:hover{background:#f6f4ef}
+.cid input{width:17px;height:17px;flex:none}
+.marcadas{margin-top:12px}
+.rot-marcadas{
+  font-size:.72rem;text-transform:uppercase;letter-spacing:.7px;color:var(--verde);
+  font-weight:700;margin-bottom:6px
+}
+.chip-cid{
+  display:inline-flex;align-items:center;gap:5px;background:var(--verde);color:#fff;
+  border-radius:14px;padding:3px 5px 3px 11px;font-size:.83rem;margin:0 6px 6px 0
+}
+.chip-cid button{
+  border:0;background:rgba(255,255,255,.22);color:#fff;border-radius:50%;
+  width:18px;height:18px;line-height:1;cursor:pointer;font-size:.85rem
+}
+.chip-cid button:hover{background:rgba(255,255,255,.4)}

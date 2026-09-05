@@ -592,7 +592,8 @@ def precos_matriz(db, rota=None, municipio=None, cliente=None, desde=None):
     onde = ("WHERE " + " AND ".join(filtros)) if filtros else ""
     return [dict(r) for r in db.execute("""
         SELECT DISTINCT ON (item, concorrente)
-               item, concorrente, preco, municipio, rota, coletado_em, usuario_login
+               item, concorrente, preco, municipio, rota, coletado_em, usuario_login,
+               COALESCE(observacao, condicao_pagamento) AS observacao
           FROM precos_concorrencia %s
          ORDER BY item, concorrente, coletado_em DESC""" % onde, args)]
 
@@ -646,59 +647,62 @@ def precos_opcoes(db):
     return {"concorrentes": conc, "itens": itens, "municipios": cidades}
 
 
-def precos_do_escopo(db, concorrente, escopo, valor):
-    """Ultimo preco conhecido de cada item naquele recorte, para a tela abrir ja
-    preenchida: ele corrige o que mudou em vez de digitar tudo de novo."""
-    coluna = {"rota": "rota", "cidade": "municipio", "cliente": "cliente_codigo"}[escopo]
+def precos_das_cidades(db, concorrente, cidades):
+    """Ultimo preco conhecido de cada item nas cidades escolhidas, para a tela
+    abrir preenchida. Havendo historico, vale o mais recente."""
+    if not cidades:
+        return {}
     return {r["item"]: dict(r) for r in db.execute("""
         SELECT DISTINCT ON (item) item, preco, coletado_em, usuario_login,
-               condicao_pagamento, prazo_entrega
+               observacao, prazo_entrega
           FROM precos_concorrencia
-         WHERE concorrente = %%s AND %s = %%s
-         ORDER BY item, coletado_em DESC""" % coluna, (concorrente, valor))}
+         WHERE concorrente = %s AND municipio = ANY(%s)
+         ORDER BY item, coletado_em DESC""", (concorrente, list(cidades)))}
 
 
-def registrar_precos(db, coletado_em, usuario_login, concorrente, escopo, valor,
-                     linhas, municipio, rota, cliente_codigo, condicao, prazo):
-    """Grava o que o representante digitou. Cada envio e um registro novo - a
-    serie guarda a historia, e o painel mostra sempre o mais recente."""
-    for l in linhas:
-        db.execute("""
-            INSERT INTO precos_concorrencia
-                (ficha_uuid, coletado_em, usuario_login, concorrente, item, preco,
-                 municipio, rota, cliente_codigo, condicao_pagamento, prazo_entrega,
-                 origem, escopo)
-            VALUES (NULL,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'direto',%s)""",
-            (coletado_em, usuario_login, concorrente, l["item"], l["preco"],
-             municipio, rota, cliente_codigo, condicao, prazo, escopo))
-    return len(linhas)
+def rotas_das_cidades(db, cidades):
+    """De qual rota e cada cidade, para o painel poder filtrar por rota depois."""
+    if not cidades:
+        return {}
+    return {r["cidade"]: r["rota"] for r in db.execute("""
+        SELECT DISTINCT ON (cidade) cidade, TRIM(rota) AS rota
+          FROM clientes
+         WHERE ativo = 1 AND cidade = ANY(%s)
+           AND rota IS NOT NULL AND TRIM(rota) <> ''
+         ORDER BY cidade""", (list(cidades),))}
 
 
-def contexto_do_escopo(db, escopo, valor):
-    """Preenche as outras colunas a partir do que foi escolhido, para o painel
-    poder filtrar por qualquer uma delas depois."""
-    if escopo == "cliente":
-        r = db.execute("SELECT codigo, cidade, rota FROM clientes WHERE codigo = %s",
-                       (valor,)).fetchone()
-        if not r:
-            return None
-        return {"municipio": r["cidade"], "rota": r["rota"], "cliente_codigo": r["codigo"]}
-    if escopo == "cidade":
-        r = db.execute("""SELECT rota FROM clientes
-                           WHERE cidade = %s AND rota IS NOT NULL AND TRIM(rota) <> ''
-                           LIMIT 1""", (valor,)).fetchone()
-        return {"municipio": valor, "rota": (r or {}).get("rota"), "cliente_codigo": None}
-    return {"municipio": None, "rota": valor, "cliente_codigo": None}
+def registrar_precos(db, coletado_em, usuario_login, concorrente, cidades, rotas,
+                     linhas, observacao, prazo):
+    """Uma linha por item e por cidade coberta. Guardar assim - e nao uma linha
+    com a lista de cidades dentro - e o que deixa o painel filtrar por cidade ou
+    por rota depois, sem abrir texto nenhum."""
+    n = 0
+    for cidade in cidades:
+        for l in linhas:
+            db.execute("""
+                INSERT INTO precos_concorrencia
+                    (ficha_uuid, coletado_em, usuario_login, concorrente, item,
+                     preco, municipio, rota, cliente_codigo, observacao,
+                     prazo_entrega, origem, escopo)
+                VALUES (NULL,%s,%s,%s,%s,%s,%s,%s,NULL,%s,%s,'direto','cidades')""",
+                (coletado_em, usuario_login, concorrente, l["item"], l["preco"],
+                 cidade, rotas.get(cidade), observacao, prazo))
+            n += 1
+    return n
 
 
-def opcoes_para_pesquisa(db):
-    """Rotas, cidades e clientes da carteira - o representante escolhe daqui."""
-    rotas = [r["rota"] for r in db.execute(
-        "SELECT DISTINCT TRIM(rota) rota FROM clientes WHERE ativo = 1 "
-        "AND rota IS NOT NULL AND TRIM(rota) <> '' ORDER BY rota")]
-    cidades = [r["cidade"] for r in db.execute(
-        "SELECT DISTINCT cidade FROM clientes WHERE ativo = 1 "
-        "AND cidade IS NOT NULL AND TRIM(cidade) <> '' ORDER BY cidade")]
-    clientes = [dict(r) for r in db.execute(
-        "SELECT codigo, nome, cidade FROM clientes WHERE ativo = 1 ORDER BY nome")]
-    return {"rotas": rotas, "cidades": cidades, "clientes": clientes}
+def rotas_com_cidades(db):
+    """Rotas da carteira com suas cidades - a rota e atalho para marcar as
+    cidades dela de uma vez, igual ao planejamento de viagem."""
+    linhas = db.execute("""
+        SELECT COALESCE(NULLIF(TRIM(rota),''),'Sem rota') AS rota, cidade,
+               COUNT(*) AS clientes
+          FROM clientes
+         WHERE ativo = 1 AND cidade IS NOT NULL AND TRIM(cidade) <> ''
+         GROUP BY rota, cidade ORDER BY rota, cidade""")
+    saida = {}
+    for r in linhas:
+        d = saida.setdefault(r["rota"], {"rota": r["rota"], "cidades": []})
+        d["cidades"].append({"cidade": r["cidade"], "clientes": r["clientes"]})
+    return sorted(saida.values(), key=lambda x: x["rota"])

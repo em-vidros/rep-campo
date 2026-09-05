@@ -59,11 +59,11 @@ def serie():
 @bp.route("/api/precos/formulario")
 @login_obrigatorio
 def formulario():
+    cidades = [c for c in (request.args.get("cidades") or "").split("|") if c.strip()]
     return jsonify(app_precos.formulario(
         dbmod.get_db(),
         concorrente=(request.args.get("concorrente") or "").strip(),
-        escopo=(request.args.get("escopo") or "").strip(),
-        valor=(request.args.get("valor") or "").strip()))
+        cidades=cidades))
 
 
 @bp.route("/api/precos/registrar", methods=["POST"])

@@ -72,7 +72,8 @@ function desenhar(d) {
         if (!v) return '<td class="vazia">—</td>';
         const i = idade(v.coletado_em);
         const dica = `${dataBr(v.coletado_em)} · ${v.municipio || 'sem cidade'}`
-          + ` · ${i.dias} dias · por ${v.por}`;
+          + ` · ${i.dias} dias · por ${v.por}`
+          + (v.observacao ? `\n${v.observacao}` : '');
         return `<td class="celula ${i.classe}" title="${esc(dica)}">
           <b>${esc(brl(v.preco))}</b><small>${i.dias} d</small></td>`;
       }).join('');
@@ -129,16 +130,16 @@ if (document.getElementById('tela-grade')) carregar();
 /* ==================================================== atualizar precos ====
 
    O representante consegue essa informacao a conta-gotas: uma proposta que o
-   cliente mostrou, um telefonema, uma conversa na loja. Entao a tela abre com
-   o ultimo preco conhecido daquele recorte ja preenchido - ele corrige o que
-   mudou em vez de digitar dez campos toda vez.
+   cliente mostrou, um telefonema, uma conversa na loja. E o mesmo preco quase
+   nunca vale para uma cidade so - o concorrente pratica a mesma tabela na rota
+   inteira, ou em parte dela mais alguma cidade vizinha de outra rota.
 */
-let OPCOES = null;
+let ROTAS = null;
+const CIDADES = new Set();
 
 const ERROS_P = {
   sem_concorrente: 'Escolha o concorrente.',
-  sem_escopo: 'Escolha se o preço vale para uma rota, uma cidade ou um cliente.',
-  escopo_desconhecido: 'Não encontrei esse cliente na carteira.',
+  sem_cidades: 'Marque ao menos uma cidade que esse preço cobre.',
   sem_precos: 'Preencha ao menos um preço.',
 };
 
@@ -147,35 +148,92 @@ function msg(t, erro) {
   if (t) window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+const concorrenteEscolhido = () =>
+  $('p-concorrente').value === 'Outro' ? $('p-outro').value.trim() : $('p-concorrente').value;
+
 async function carregarForm() {
   const q = new URLSearchParams({
     concorrente: concorrenteEscolhido() || '',
-    escopo: $('p-escopo').value, valor: $('p-valor').value,
+    cidades: [...CIDADES].join('|'),
   });
   const r = await fetch('/api/precos/formulario?' + q);
   if (!r.ok) return;
   const d = await r.json();
 
-  if (!OPCOES) {
-    OPCOES = d.opcoes;
+  if (!ROTAS) {
+    ROTAS = d.rotas;
     $('p-concorrente').innerHTML = '<option value="">escolha</option>' +
       d.concorrentes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-    encherValor();
+    $('p-rota').innerHTML = '<option value="">escolha a rota</option>' +
+      ROTAS.map(x => `<option value="${esc(x.rota)}">${esc(x.rota)}</option>`).join('');
   }
-  $('p-condicao').value = d.condicao_pagamento || '';
-  $('p-prazo').value = d.prazo_entrega || '';
+  $('p-obs').value = d.observacao || '';
   $('aviso-anterior').innerHTML = d.ja_pesquisado
-    ? 'Já existe pesquisa deste concorrente neste local — os campos vêm com o '
+    ? 'Já existe pesquisa deste concorrente nessas cidades — os campos vêm com o '
       + '<b>último preço conhecido</b>. Ajuste o que mudou e salve.'
-    : (concorrenteEscolhido() && $('p-valor').value
-        ? 'Primeira pesquisa deste concorrente neste local.' : '');
+    : (concorrenteEscolhido() && CIDADES.size
+        ? 'Primeira pesquisa deste concorrente nessas cidades.' : '');
   desenharItens(d.itens);
 }
 
+/* ------------------------------------------------------------- cidades */
+
+function desenharCidades() {
+  const rota = ROTAS && ROTAS.find(r => r.rota === $('p-rota').value);
+  if (!rota) {
+    $('cidades-rota').innerHTML = '<p class="dica">Escolha uma rota acima.</p>';
+    return;
+  }
+  $('cidades-rota').innerHTML = rota.cidades.map(c => `
+    <label class="cid">
+      <input type="checkbox" value="${esc(c.cidade)}"
+        ${CIDADES.has(c.cidade) ? 'checked' : ''}> ${esc(c.cidade)}
+    </label>`).join('');
+}
+
+/* As marcadas ficam visiveis fora da rota, senao ele troca de rota e perde de
+   vista o que ja escolheu antes. */
+function desenharMarcadas() {
+  const n = CIDADES.size;
+  $('marcadas').innerHTML = !n ? '' :
+    `<div class="rot-marcadas">${n} cidade(s) cobertas por este preço</div>` +
+    [...CIDADES].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(c =>
+      `<span class="chip-cid">${esc(c)}<button data-tirar="${esc(c)}">×</button></span>`).join('');
+}
+
+$('p-rota').addEventListener('change', desenharCidades);
+
+$('cidades-rota').addEventListener('change', ev => {
+  const c = ev.target.closest('input[type=checkbox]');
+  if (!c) return;
+  c.checked ? CIDADES.add(c.value) : CIDADES.delete(c.value);
+  desenharMarcadas();
+  carregarForm();
+});
+
+$('marcadas').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-tirar]');
+  if (!b) return;
+  CIDADES.delete(b.dataset.tirar);
+  desenharMarcadas(); desenharCidades(); carregarForm();
+});
+
+$('btn-todas').onclick = () => {
+  const rota = ROTAS && ROTAS.find(r => r.rota === $('p-rota').value);
+  if (!rota) return msg('Escolha uma rota primeiro.', true);
+  rota.cidades.forEach(c => CIDADES.add(c.cidade));
+  desenharCidades(); desenharMarcadas(); carregarForm();
+};
+
+$('btn-limpar-cid').onclick = () => {
+  CIDADES.clear(); desenharCidades(); desenharMarcadas(); carregarForm();
+};
+
+/* --------------------------------------------------------------- itens */
+
 function desenharItens(itens) {
-  const pronto = concorrenteEscolhido() && $('p-valor').value;
-  if (!pronto) {
-    $('form-itens').innerHTML = '<p class="dica">Escolha o concorrente e o local acima.</p>';
+  if (!concorrenteEscolhido() || !CIDADES.size) {
+    $('form-itens').innerHTML = '<p class="dica">Escolha o concorrente e as cidades acima.</p>';
     return;
   }
   let grupo = '';
@@ -197,27 +255,11 @@ function desenharItens(itens) {
     </div>`;
 }
 
-const concorrenteEscolhido = () =>
-  $('p-concorrente').value === 'Outro' ? $('p-outro').value.trim() : $('p-concorrente').value;
-
-function encherValor() {
-  if (!OPCOES) return;
-  const tipo = $('p-escopo').value;
-  const sel = $('p-valor');
-  const lista = tipo === 'rota' ? OPCOES.rotas.map(x => [x, x])
-    : tipo === 'cidade' ? OPCOES.cidades.map(x => [x, x])
-    : OPCOES.clientes.map(c => [c.codigo, `${c.nome} — ${c.cidade || 'sem cidade'}`]);
-  sel.innerHTML = '<option value="">escolha</option>' +
-    lista.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('');
-}
-
 $('p-concorrente').addEventListener('change', () => {
   $('wrap-outro').classList.toggle('oculto', $('p-concorrente').value !== 'Outro');
   carregarForm();
 });
 $('p-outro').addEventListener('change', carregarForm);
-$('p-escopo').addEventListener('change', () => { encherValor(); carregarForm(); });
-$('p-valor').addEventListener('change', carregarForm);
 
 $('btn-salvar').addEventListener('click', async () => {
   const itens = [...document.querySelectorAll('[data-item]')]
@@ -231,13 +273,12 @@ $('btn-salvar').addEventListener('click', async () => {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       concorrente: $('p-concorrente').value, concorrente_outro: $('p-outro').value,
-      escopo: $('p-escopo').value, valor: $('p-valor').value, itens,
-      condicao_pagamento: $('p-condicao').value, prazo_entrega: $('p-prazo').value,
+      cidades: [...CIDADES], itens, observacao: $('p-obs').value,
     }),
   });
   const d = await r.json().catch(() => ({}));
   if (!r.ok) return msg(ERROS_P[d.erro] || 'Não consegui salvar.', true);
-  msg(`${d.gravados} preço(s) salvos para ${d.concorrente}.`);
+  msg(`${d.gravados} preço(s) de ${d.concorrente} salvos para ${d.cidades} cidade(s).`);
   carregarForm();
   PRIMEIRA = true;
 });

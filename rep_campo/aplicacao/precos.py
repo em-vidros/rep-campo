@@ -24,7 +24,7 @@ def matriz(db, rota=None, municipio=None, cliente=None, desde=None):
         celulas[(r["item"], r["concorrente"])] = {
             "preco": float(r["preco"]), "coletado_em": r["coletado_em"],
             "municipio": r["municipio"], "rota": r["rota"],
-            "por": r["usuario_login"],
+            "por": r["usuario_login"], "observacao": r.get("observacao"),
         }
     concorrentes.sort(key=lambda x: x.lower())
 
@@ -95,12 +95,12 @@ def serie(db, concorrente, item):
 
 # ------------------------------------------------ tela do representante
 
-def formulario(db, concorrente=None, escopo=None, valor=None):
-    """O que a tela de atualizacao precisa: a cesta e, se ja houver pesquisa
-    naquele recorte, o ultimo preco de cada item para ele so corrigir."""
-    conhecidos = {}
-    if concorrente and escopo and valor:
-        conhecidos = repo.precos_do_escopo(db, concorrente, escopo, valor)
+def formulario(db, concorrente=None, cidades=None):
+    """O que a tela de atualizacao precisa: a cesta, as rotas com suas cidades
+    para marcar, e - se ja houver pesquisa naquelas cidades - o ultimo preco de
+    cada item, para ele so corrigir o que mudou."""
+    cidades = D.cidades_validas(cidades)
+    conhecidos = repo.precos_das_cidades(db, concorrente, cidades) if concorrente else {}
 
     itens = []
     for x in C.CESTA_PRECO:
@@ -109,22 +109,20 @@ def formulario(db, concorrente=None, escopo=None, valor=None):
             "grupo": x["grupo"], "item": x["item"],
             "preco": float(ant["preco"]) if ant else None,
             "coletado_em": ant["coletado_em"] if ant else None,
-            "por": ant["usuario_login"] if ant else None,
         })
-    # item que alguem digitou no campo livre e ja virou serie naquele recorte
     extras = [i for i in conhecidos if i not in {x["item"] for x in C.CESTA_PRECO}]
     for i in sorted(extras):
         a = conhecidos[i]
         itens.append({"grupo": "Outros itens", "item": i, "preco": float(a["preco"]),
-                      "coletado_em": a["coletado_em"], "por": a["usuario_login"]})
+                      "coletado_em": a["coletado_em"]})
 
     ultimo = next((c for c in conhecidos.values()), None)
     return {
         "itens": itens,
         "concorrentes": C.CONCORRENTES,
-        "opcoes": repo.opcoes_para_pesquisa(db),
+        "rotas": repo.rotas_com_cidades(db),
         "unidade": C.UNIDADE_PRECO,
-        "condicao_pagamento": (ultimo or {}).get("condicao_pagamento"),
+        "observacao": (ultimo or {}).get("observacao"),
         "prazo_entrega": (ultimo or {}).get("prazo_entrega"),
         "ja_pesquisado": bool(conhecidos),
     }
@@ -136,22 +134,18 @@ def registrar(db, usuario_login, dados):
     if not conc:
         return None, "sem_concorrente"
 
-    escopo, valor = D.escopo_valido(dados.get("escopo"), dados.get("valor"))
-    if not escopo:
-        return None, "sem_escopo"
-
-    ctx = repo.contexto_do_escopo(db, escopo, valor)
-    if ctx is None:
-        return None, "escopo_desconhecido"
+    cidades = D.cidades_validas(dados.get("cidades"))
+    if not cidades:
+        return None, "sem_cidades"
 
     linhas = D.linhas_digitadas(dados.get("itens"))
     if not linhas:
         return None, "sem_precos"
 
+    rotas = repo.rotas_das_cidades(db, cidades)
     n = repo.registrar_precos(
-        db, agora(), usuario_login, conc, escopo, valor, linhas,
-        ctx["municipio"], ctx["rota"], ctx["cliente_codigo"],
-        str(dados.get("condicao_pagamento") or "")[:120] or None,
+        db, agora(), usuario_login, conc, cidades, rotas, linhas,
+        str(dados.get("observacao") or "")[:600] or None,
         str(dados.get("prazo_entrega") or "")[:120] or None)
     db.commit()
-    return {"gravados": n, "concorrente": conc, "escopo": escopo, "valor": valor}, None
+    return {"gravados": len(linhas), "cidades": len(cidades), "concorrente": conc}, None

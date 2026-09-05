@@ -262,6 +262,9 @@ COLUNAS = [
     "ALTER TABLE precos_concorrencia ALTER COLUMN ficha_uuid DROP NOT NULL",
     "ALTER TABLE precos_concorrencia ADD COLUMN IF NOT EXISTS origem TEXT DEFAULT 'ficha'",
     "ALTER TABLE precos_concorrencia ADD COLUMN IF NOT EXISTS escopo TEXT",
+    # condicao especial de pagamento vira observacao livre: "28/35/42 so acima
+    # de 50 m2" nao cabe num campo de condicao
+    "ALTER TABLE precos_concorrencia ADD COLUMN IF NOT EXISTS observacao TEXT",
 ]
 
 
