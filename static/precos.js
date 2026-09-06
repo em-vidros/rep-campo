@@ -248,12 +248,25 @@ function desenharItens(itens) {
              value="${x.preco != null ? esc(brl(x.preco)) : ''}">
     </div>`;
   }).join('') + `
-    <div class="grupo-itens">Outro item</div>
-    <div class="linha-preco">
-      <input id="p-item-livre" placeholder="nome do item">
-      <input id="p-preco-livre" inputmode="decimal" placeholder="R$/m²">
-    </div>`;
+    <div class="grupo-itens">Outros itens</div>
+    <div id="itens-livres"></div>
+    <button type="button" id="btn-mais-item" class="mini">+ adicionar item</button>`;
+  linhaLivre();
 }
+
+/* Fora da cesta o representante encontra de tudo: espelho, laminado, um perfil
+   que o concorrente empurra junto. Uma linha so nao da conta. */
+function linhaLivre() {
+  const d = document.createElement('div');
+  d.className = 'linha-preco';
+  d.innerHTML = '<input class="item-livre" placeholder="nome do item">'
+    + '<input class="preco-livre" inputmode="decimal" placeholder="R$/m²">';
+  $('itens-livres').appendChild(d);
+}
+
+document.addEventListener('click', ev => {
+  if (ev.target.id === 'btn-mais-item') linhaLivre();
+});
 
 $('p-concorrente').addEventListener('change', () => {
   $('wrap-outro').classList.toggle('oculto', $('p-concorrente').value !== 'Outro');
@@ -265,10 +278,11 @@ $('btn-salvar').addEventListener('click', async () => {
   const itens = [...document.querySelectorAll('[data-item]')]
     .map(i => ({ item: i.dataset.item, preco: i.value.trim() }))
     .filter(x => x.preco);
-  const livre = $('p-item-livre'), precoLivre = $('p-preco-livre');
-  if (livre && livre.value.trim() && precoLivre.value.trim()) {
-    itens.push({ item: livre.value.trim(), preco: precoLivre.value.trim() });
-  }
+  document.querySelectorAll('#itens-livres .linha-preco').forEach(l => {
+    const nome = l.querySelector('.item-livre').value.trim();
+    const preco = l.querySelector('.preco-livre').value.trim();
+    if (nome && preco) itens.push({ item: nome, preco });
+  });
   const r = await fetch('/api/precos/registrar', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

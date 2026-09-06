@@ -294,3 +294,6 @@ tbody tr.nunca{background:#fdecea}
   width:18px;height:18px;line-height:1;cursor:pointer;font-size:.85rem
 }
 .chip-cid button:hover{background:rgba(255,255,255,.4)}
+
+.linha-preco input.item-livre{flex:1;text-align:left}
+#btn-mais-item{margin-top:6px}
