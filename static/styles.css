@@ -240,3 +240,19 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
   color:#7a4d00;font-weight:700;margin-bottom:3px
 }
 .missao .prazo{display:block;margin-top:3px;font-size:.78rem;color:var(--cinza)}
+
+/* ---- busca de cliente ---- */
+/* Lista propria no lugar do datalist: no celular ele precisa VER e TOCAR. */
+.achados{
+  border:1px solid var(--borda);border-radius:10px;background:#fff;margin-top:6px;
+  max-height:46vh;overflow-y:auto;box-shadow:0 6px 20px rgba(0,0,0,.12)
+}
+.achado{
+  display:flex;flex-direction:column;gap:2px;width:100%;text-align:left;
+  background:none;border:0;border-bottom:1px solid #f0eee9;padding:12px 14px;
+  font-size:1rem;color:var(--texto);cursor:pointer
+}
+.achado:last-child{border-bottom:0}
+.achado:active{background:#eef3f0}
+.achado b{font-weight:600;line-height:1.25}
+.achado small{color:var(--cinza);font-size:.8rem}

@@ -549,7 +549,10 @@ $('form-ficha').addEventListener('submit', async ev => {
       erros.push('Informe de qual expedição é a nota (Imperatriz, Santa Inês ou Ananindeua).');
   });
 
-  const achado = CFG.clientes.find(c => c.nome === cliente);
+  // o codigo vem de quem ele TOCOU na lista; texto igual nao basta
+  const achado = clienteEscolhido && clienteEscolhido.nome === cliente
+    ? clienteEscolhido
+    : CFG.clientes.find(c => c.nome === cliente);
   const ficha = {
     uuid: uuid(), tipo: tipoAtual,
     cliente_codigo: achado ? achado.codigo : null,
@@ -584,6 +587,8 @@ $('form-ficha').addEventListener('submit', async ev => {
 
 function limparForm() {
   $('form-ficha').reset();
+  clienteEscolhido = null;
+  $('achados-cliente').classList.add('oculto');
   fotoDataUrl = null;
   anexos = [];
   $('previa-foto').classList.add('oculto');
@@ -714,8 +719,61 @@ $('f-relato').addEventListener('input', ev => {
   el.textContent = n + ' de ' + CFG.relato_min + ' caracteres recomendados';
   el.className = 'dica ' + (n >= CFG.relato_min ? 'bom' : (n > 0 ? 'ruim' : ''));
 });
+/* Busca de cliente feita na mao.
+
+   O <datalist> do navegador nao dava conta: 1457 opcoes num celular, filtro por
+   prefixo em alguns navegadores (e 11% dos nomes comecam com o CNPJ, entao
+   digitar o nome da loja nao achava nada) e casamento por igualdade exata do
+   texto - se ele digitasse e nao tocasse na sugestao, a ficha ia sem codigo.
+   Agora ele digita, ve os achados e TOCA em um; o codigo fica guardado aqui. */
+let clienteEscolhido = null;
+
+const semAcento = t => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+function buscarClientes(termo) {
+  const t = semAcento(termo);
+  if (t.length < 2) return [];
+  const achados = [];
+  for (const c of CFG.clientes || []) {
+    if (semAcento(c.nome).includes(t) || semAcento(c.cidade).includes(t)
+        || String(c.codigo).includes(t)) {
+      achados.push(c);
+      if (achados.length >= 20) break;
+    }
+  }
+  return achados;
+}
+
+function mostrarAchados(lista) {
+  const cx = $('achados-cliente');
+  if (!lista.length) return cx.classList.add('oculto');
+  cx.innerHTML = lista.map((c, i) => `
+    <button type="button" class="achado" data-i="${i}">
+      <b>${esc(c.nome)}</b>
+      <small>${esc(c.cidade || 'sem cidade')} · cod ${esc(c.codigo)}${c.curva ? ' · curva ' + esc(c.curva) : ''}</small>
+    </button>`).join('');
+  cx.classList.remove('oculto');
+  cx.querySelectorAll('.achado').forEach(b => b.onclick = () => {
+    escolherCliente(lista[Number(b.dataset.i)]);
+  });
+}
+
+function escolherCliente(c) {
+  clienteEscolhido = c;
+  $('f-cliente').value = c.nome;
+  $('achados-cliente').classList.add('oculto');
+  desenharCliente(c);
+}
+
 $('f-cliente').addEventListener('input', ev => {
-  const c = CFG.clientes.find(x => x.nome === ev.target.value.trim());
+  const termo = ev.target.value.trim();
+  // digitou de novo: a escolha anterior nao vale mais
+  if (clienteEscolhido && clienteEscolhido.nome !== termo) clienteEscolhido = null;
+  mostrarAchados(buscarClientes(termo));
+  if (!clienteEscolhido) desenharCliente(null);
+});
+
+function desenharCliente(c) {
   const cartao = $('cartao-cliente');
   if (c) {
     $('dica-cliente').textContent = '';
@@ -742,8 +800,16 @@ $('f-cliente').addEventListener('input', ev => {
     if (typeof ajustarMetrica === 'function' && $('f-exp-etapa')) ajustarMetrica();
   } else {
     cartao.classList.add('oculto');
-    $('dica-cliente').textContent = ev.target.value.trim()
-      ? 'nao encontrado na carteira: sera registrado como cliente novo' : '';
+    $('dica-cliente').textContent = $('f-cliente').value.trim()
+      ? 'toque no cliente na lista acima; se nao aparecer, sera registrado como cliente novo'
+      : '';
+  }
+}
+
+// tocar fora fecha a lista de achados
+document.addEventListener('click', ev => {
+  if (!ev.target.closest('#achados-cliente') && ev.target.id !== 'f-cliente') {
+    $('achados-cliente').classList.add('oculto');
   }
 });
 
@@ -913,8 +979,6 @@ async function carregarCfg() {
     if (c && c.valor) CFG = c.valor;
   }
   pintarRecadosGerais();
-  $('lista-clientes').innerHTML = (CFG.clientes || [])
-    .map(c => `<option value="${esc(c.nome)}">`).join('');
   $('lista-municipios').innerHTML = (CFG.municipios || [])
     .map(m => `<option value="${esc(m)}">`).join('');
 
@@ -938,6 +1002,8 @@ function recuperarRascunho() {
     if (!botao) return;
     botao.click();
     $('f-cliente').value = r.cliente || '';
+    clienteEscolhido = (CFG.clientes || []).find(c => c.nome === r.cliente) || null;
+    if (clienteEscolhido) desenharCliente(clienteEscolhido);
     $('f-municipio').value = r.municipio || '';
     $('f-objetivo').value = r.objetivo || '';
     $('f-relato').value = r.relato || '';

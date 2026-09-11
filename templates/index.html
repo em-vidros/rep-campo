@@ -66,8 +66,9 @@
       <div id="aviso-rascunho" class="alerta info oculto">Rascunho recuperado.</div>
 
       <label>Cliente *<span class="dica-ajuda" data-dica="Digite parte do nome e escolha na lista. Os dados vêm da carteira: código, cidade, rota, vendedor e quanto ele comprou nos últimos 12 meses. Se não achar, será registrado como cliente novo.">?</span>
-        <input id="f-cliente" list="lista-clientes" placeholder="digite para buscar" autocomplete="off" required>
-        <datalist id="lista-clientes"></datalist>
+        <input id="f-cliente" placeholder="digite parte do nome, a cidade ou o codigo"
+               autocomplete="off" inputmode="search" required>
+        <div id="achados-cliente" class="achados oculto"></div>
         <small id="dica-cliente" class="dica"></small>
       </label>
 

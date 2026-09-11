@@ -75,7 +75,7 @@ document.querySelectorAll('.aba').forEach(b => b.onclick = () => {
   $('tela-' + b.dataset.tela).classList.add('ativa');
   if (b.dataset.tela === 'lista') carregarViagens();
   if (b.dataset.tela === 'avulsas') carregarAvulsas();
-  if (b.dataset.tela === 'planejar') carregarRotas();
+  if (b.dataset.tela === 'planejar') { carregarRotas(); atualizarRodape(); }
 });
 
 /* ---------------------------------------------------------------- rotas */
@@ -217,8 +217,15 @@ async function buscarSugestao() {
 
 function atualizarRodape() {
   const n = escolhidos.size;
-  $('rodape-plano').classList.toggle('oculto', n === 0);
-  $('conta-selecao').textContent = n + (n === 1 ? ' cliente no roteiro' : ' clientes no roteiro');
+  // O botao de criar NUNCA some. Antes so aparecia com cliente selecionado, e
+  // quem preenchia os dados da viagem sem buscar sugestao - ou buscava e nao
+  // vinha ninguem - ficava sem nenhuma forma de finalizar o plano.
+  $('rodape-plano').classList.remove('oculto');
+  $('conta-selecao').textContent = n === 0
+    ? 'nenhum cliente marcado ainda'
+    : n + (n === 1 ? ' cliente no roteiro' : ' clientes no roteiro');
+  $('btn-criar').textContent = n === 0
+    ? 'Criar viagem sem roteiro' : 'Criar viagem com os selecionados';
 }
 
 $('s-buscar').onclick = buscarSugestao;
