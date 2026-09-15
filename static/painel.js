@@ -4,7 +4,21 @@ const $ = id => document.getElementById(id);
 const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const brl = v => (v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
-const dataBR = iso => { if (!iso) return '—'; const d = new Date(iso); return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR'); };
+/* Data pura ("2026-09-20") NAO passa pelo new Date().
+
+   O navegador le data sem hora como meia-noite em UTC e depois mostra no fuso
+   local: em Sao Paulo (UTC-3) isso volta um dia. Era o "20/09" virando "19/09"
+   que o Sipiao viu na viagem - e em 1o de janeiro voltaria o ANO inteiro.
+   Data sem hora se formata no texto mesmo; so quem tem hora (e portanto fuso)
+   e que passa pelo Date. */
+const dataBR = iso => {
+  if (!iso) return '—';
+  const s = String(iso);
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return `${m[3]}/${m[2]}/${m[1]}`;
+  const d = new Date(s);
+  return isNaN(d) ? '—' : d.toLocaleDateString('pt-BR');
+};
 
 let COBERTURA = [];
 
