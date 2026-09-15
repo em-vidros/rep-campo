@@ -256,3 +256,14 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .achado:active{background:#eef3f0}
 .achado b{font-weight:600;line-height:1.25}
 .achado small{color:var(--cinza);font-size:.8rem}
+
+/* ---- editar a viagem ja criada ---- */
+.edicao{display:flex;flex-direction:column;gap:9px}
+.edicao label{display:flex;flex-direction:column;gap:3px;font-size:.8rem;color:var(--cinza)}
+.edicao input,.edicao textarea{
+  padding:9px 11px;border:1px solid var(--borda);border-radius:8px;font-size:1rem;
+  font-family:inherit;background:#fff;color:var(--texto)
+}
+.dupla-data{display:flex;gap:9px}
+.dupla-data label{flex:1}
+.edicao .btn-sec{margin-top:3px}

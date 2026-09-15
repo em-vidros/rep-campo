@@ -295,7 +295,18 @@ async function carregarViagens() {
       return;
     }
     $('corpo-' + id).innerHTML = `
-      ${v.observacao ? `<div class="bloco"><h4>Observação</h4><p>${esc(v.observacao)}</p></div>` : ''}
+      <div class="bloco"><h4>Dados da viagem</h4>
+        <div class="edicao">
+          <label>Nome<input data-ed="nome" value="${esc(v.nome || '')}"></label>
+          <label>Rota<input data-ed="rota" value="${esc(v.rota || '')}"></label>
+          <div class="dupla-data">
+            <label>Saída<input type="date" data-ed="inicio" value="${esc(v.inicio || '')}"></label>
+            <label>Retorno<input type="date" data-ed="fim" value="${esc(v.fim || '')}"></label>
+          </div>
+          <label>Observação<textarea data-ed="observacao" rows="2">${esc(v.observacao || '')}</textarea></label>
+          <button type="button" class="btn-sec" data-salvar="${id}">Salvar alterações</button>
+        </div>
+      </div>
       <div class="bloco"><h4>Roteiro</h4>
         ${v.clientes.map(c => `
           <div class="item-roteiro ${c.visitado ? 'feito' : ''}">
@@ -314,6 +325,24 @@ async function carregarViagens() {
           ${['planejada', 'em_andamento', 'concluida'].map(st =>
             `<option value="${st}"${st === v.status ? ' selected' : ''}>${st.replace('_', ' ')}</option>`).join('')}
         </select></div>`;
+    const btnSalvar = $('corpo-' + id).querySelector('[data-salvar]');
+    if (btnSalvar) btnSalvar.onclick = async () => {
+      if (!exigeRede('alterar a viagem')) return;
+      const campos = {};
+      $('corpo-' + id).querySelectorAll('[data-ed]').forEach(el => {
+        campos[el.dataset.ed] = el.value.trim();
+      });
+      if (!campos.nome) return msg('A viagem precisa de um nome.', true);
+      if (campos.inicio && campos.fim && campos.fim < campos.inicio) {
+        return msg('O retorno não pode ser antes da saída.', true);
+      }
+      const r = await fetch('/api/viagens/' + id, { method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(campos) });
+      if (!r.ok) return msg('Não consegui salvar as alterações.', true);
+      msg('Viagem atualizada.');
+      carregarViagens();
+    };
+
     const btnRel = $('corpo-' + id).querySelector('[data-relatorio]');
     if (btnRel) btnRel.onclick = () => verRelatorio(id, $('relatorio-' + id));
     $('corpo-' + id).querySelector('[data-status]').onchange = async ev => {
