@@ -265,6 +265,9 @@ COLUNAS = [
     # condicao especial de pagamento vira observacao livre: "28/35/42 so acima
     # de 50 m2" nao cabe num campo de condicao
     "ALTER TABLE precos_concorrencia ADD COLUMN IF NOT EXISTS observacao TEXT",
+    # visita de relacionamento pode terminar sem pendencia nenhuma, e isso e
+    # resposta legitima. Separa "nao havia o que fazer" de "esqueceu de escrever"
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS sem_pendencia INTEGER DEFAULT 0",
 ]
 
 

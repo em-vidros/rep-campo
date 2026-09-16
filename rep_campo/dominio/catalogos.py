@@ -16,7 +16,19 @@ MUNICIPIOS_MIGRACAO = [
     "Moncao/MA", "Igarape do Meio/MA", "Pindare-Mirim/MA", "Pio XII/MA",
 ]
 
+# Recomendado. Abaixo disso a ficha entra marcada como relato curto - nunca e
+# recusada: dado de campo se classifica, nao se joga fora.
 RELATO_MIN = 200
+
+# Minimo para a ficha existir. Duas fichas chegaram com o relato VAZIO porque a
+# tela exigia o proximo passo e nao exigia o relato - o acessorio travava e o
+# essencial passava.
+RELATO_OBRIGATORIO_MIN = 40
+
+# Visita de relacionamento nem sempre deixa pendencia. Obrigar um proximo passo
+# aqui so produzia texto de fachada ("manter contato") com data do proprio dia.
+# Nesses tipos ele escreve o passo real OU declara que nao ficou nada pendente.
+TIPOS_PASSO_OPCIONAL = ("cordialidade",)
 
 PROBLEMAS_TECNICOS = [
     "Arranhao", "Ralado", "Quebra espontanea", "Avaria da peca",

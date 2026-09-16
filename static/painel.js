@@ -168,7 +168,9 @@ function cartaoFicha(f) {
         · ${esc(f.usuario_login)}${f.prospect ? ' · <b>cliente novo</b>' : ''}</div></div>
       <div class="ficha-selos">
         ${selo(f.nivel_evidencia || 'leve')}
-        ${f.conta_indicador ? '' : '<span class="selo pendente">sem próximo passo</span>'}
+        ${f.conta_indicador ? ''
+          : f.sem_pendencia ? '<span class="selo leve">sem pendência</span>'
+          : '<span class="selo pendente">sem próximo passo</span>'}
       </div>
     </div>
     <div class="ficha-corpo">

@@ -95,8 +95,8 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
                 criado_em_disp, recebido_em, foto_arquivo, extra_json,
                 nivel_evidencia, conta_indicador, relato_curto, app_versao,
                 problema_tipo, ocorrencia_num, ocorrencia_status,
-                exp_etapa, exp_nota, exp_comentario, exp_metrica)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                exp_etapa, exp_nota, exp_comentario, exp_metrica, sem_pendencia)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             uuid_f, usuario["uid"], usuario["login"], tipo,
             str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
@@ -118,6 +118,7 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
             texto_limitado(ficha, "problema_tipo", C.LIMITES_TEXTO),
             ocorrencia, "aberta" if ocorrencia else None,
             etapa, nota, texto_limitado(ficha, "exp_comentario", C.LIMITES_TEXTO), metrica,
+            1 if ficha.get("sem_pendencia") else 0,
         ))
         if ocorrencia:
             extra = ficha.get("extra") or {}

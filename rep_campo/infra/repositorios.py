@@ -391,7 +391,7 @@ def fichas_da_viagem(db, vid):
     return [dict(r) for r in db.execute(
         "SELECT uuid, tipo, cliente_nome, cliente_codigo, municipio, objetivo, relato, "
         "proximo_passo, prox_responsavel, prox_data, encaminhado_para, problema_tipo, "
-        "ocorrencia_num, nivel_evidencia, conta_indicador, criado_em_disp, recebido_em "
+        "ocorrencia_num, nivel_evidencia, conta_indicador, sem_pendencia, criado_em_disp, recebido_em "
         "FROM fichas WHERE viagem_id = %s ORDER BY recebido_em", (vid,))]
 
 

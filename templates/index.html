@@ -95,9 +95,13 @@
       </label>
 
       <fieldset class="bloco-passo">
-        <legend>Proximo passo <b class="obrig">obrigatorio</b>
+        <legend>Proximo passo <b class="obrig" id="selo-passo">obrigatorio</b>
           <span class="dica-ajuda" data-dica="O que fica combinado depois da visita. Sem próximo passo a visita não conta como realizada — é o que separa relacionamento de café. Ex: enviar orçamento de temperado 8mm até sexta.">?</span></legend>
-        <small class="dica">Sem proximo passo a visita nao conta como realizada.</small>
+        <small class="dica" id="dica-passo">Sem proximo passo a visita nao conta como realizada.</small>
+        <label class="linha-check oculto" id="linha-sem-pendencia">
+          <input type="checkbox" id="f-sem-pendencia">
+          Visita de relacionamento, <b>sem pendencia</b> — nao ficou nada combinado
+        </label>
         <label>O que sera feito *
           <input id="f-passo" placeholder="ex: enviar orcamento de temperado 8mm" required>
         </label>

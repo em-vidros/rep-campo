@@ -267,3 +267,15 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .dupla-data{display:flex;gap:9px}
 .dupla-data label{flex:1}
 .edicao .btn-sec{margin-top:3px}
+
+/* ---- proximo passo condicional ---- */
+.obrig.brando{background:var(--cinza)}
+/* marcou "sem pendencia": os campos ficam apagados, nao somem - ele ve que
+   existem e que voltam se desmarcar */
+.apagado input,.apagado .dupla{opacity:.35;pointer-events:none}
+#linha-sem-pendencia{
+  display:flex;align-items:center;gap:9px;margin:8px 0 2px;font-size:.95rem;
+  background:#f6f4ef;border-radius:8px;padding:10px 12px
+}
+#linha-sem-pendencia input{width:19px;height:19px;flex:none}
+.geo.falhou small{display:block;margin-top:4px;line-height:1.4;opacity:.9}

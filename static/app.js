@@ -68,6 +68,31 @@ const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
 
 // Mesma regra do servidor (rep_campo/dominio/visitas.py). Fica repetida aqui de
 // proposito: sem ela o Resumo nao teria como se montar com o aparelho offline.
+const passoOpcional = tipo => (CFG.tipos_passo_opcional || []).includes(tipo);
+
+/* O bloco do proximo passo muda de cara conforme o tipo da visita. */
+function ajustarBlocoPasso(tipo) {
+  const opcional = passoOpcional(tipo);
+  $('selo-passo').textContent = opcional ? 'quando houver' : 'obrigatorio';
+  $('selo-passo').classList.toggle('brando', opcional);
+  $('dica-passo').textContent = opcional
+    ? 'Se ficou algo combinado, escreva. Se foi so relacionamento, marque abaixo.'
+    : 'Sem proximo passo a visita nao conta como realizada.';
+  $('linha-sem-pendencia').classList.toggle('oculto', !opcional);
+  $('f-passo').required = !opcional;
+  if (!opcional) $('f-sem-pendencia').checked = false;
+}
+
+/* Marcar "sem pendencia" apaga o que estiver escrito: as duas coisas juntas
+   seriam contraditorias no relatorio. */
+$('f-sem-pendencia').addEventListener('change', ev => {
+  const bloco = $('f-passo').closest('fieldset') || $('f-passo').parentNode;
+  bloco.classList.toggle('apagado', ev.target.checked);
+  if (ev.target.checked) {
+    $('f-passo').value = ''; $('f-passo-resp').value = ''; $('f-passo-data').value = '';
+  }
+});
+
 function nivelEvidencia(temFoto, temGeo, temPasso) {
   if (temFoto && temGeo) return 'forte';
   if (temGeo && temPasso) return 'media';
@@ -488,7 +513,15 @@ function pegarGeo() {
     err => {
       geo = { lat: null, lon: null, precisao: null };
       box.className = 'geo falhou';
-      txt.textContent = 'sem localizacao (' + (err.code === 1 ? 'permissao negada' : 'sinal fraco') + ') - da pra salvar assim mesmo';
+      // Permissao negada o navegador guarda: nao pergunta de novo, e o check-in
+      // some de TODAS as fichas sem ninguem notar. Aqui ele precisa saber como
+      // desfazer, senao o indicador de evidencia fica no piso para sempre.
+      txt.innerHTML = err.code === 1
+        ? '<b>Localização bloqueada neste aparelho.</b> A ficha salva assim mesmo, '
+          + 'mas sem comprovar onde você esteve.<br><small>Para liberar: toque no '
+          + 'cadeado ao lado do endereço (ou Ajustes do celular &rarr; o app) e '
+          + 'permita a localização. Depois toque em "tentar de novo".</small>'
+        : 'sem localizacao (sinal fraco) - da pra salvar assim mesmo';
     },
     { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
   );
@@ -518,7 +551,23 @@ $('form-ficha').addEventListener('submit', async ev => {
   if (!cliente) erros.push('Informe o cliente.');
   if (!municipio) erros.push('Informe o municipio.');
   if (!objetivo) erros.push('Informe o objetivo da visita.');
-  if (!passo) erros.push('O proximo passo e obrigatorio - sem ele a visita nao conta.');
+
+  // O relato e o conteudo da visita - e o que voce le depois. Antes ele podia
+  // vir vazio enquanto o proximo passo travava a ficha: o acessorio barrava e o
+  // essencial passava.
+  if (relato.length < CFG.relato_obrigatorio_min)
+    erros.push('Conte o que aconteceu na visita (pelo menos '
+      + CFG.relato_obrigatorio_min + ' caracteres).');
+
+  // Em visita de relacionamento nem sempre fica pendencia. Ele escreve o passo
+  // real OU declara que nao ficou nada - as duas respostas sao legitimas, e
+  // ficam registradas de forma diferente.
+  const semPendencia = $('f-sem-pendencia').checked && passoOpcional(tipoAtual);
+  if (!passo && !semPendencia) {
+    erros.push(passoOpcional(tipoAtual)
+      ? 'Escreva o proximo passo, ou marque "sem pendencia".'
+      : 'O proximo passo e obrigatorio - sem ele a visita nao conta.');
+  }
   if (FOTO_OBRIGATORIA.includes(tipoAtual) && !fotoDataUrl)
     erros.push('Este tipo de visita exige foto.');
   if (tipoAtual === 'tecnica') {
@@ -560,6 +609,7 @@ $('form-ficha').addEventListener('submit', async ev => {
     prospect: $('f-prospect').checked || !achado ? 1 : 0,
     municipio, objetivo, relato,
     proximo_passo: passo,
+    sem_pendencia: semPendencia ? 1 : 0,
     prox_responsavel: $('f-passo-resp').value.trim(),
     prox_data: $('f-passo-data').value,
     encaminhado_para: $('f-encaminhado').value.trim(),
@@ -588,6 +638,9 @@ $('form-ficha').addEventListener('submit', async ev => {
 function limparForm() {
   $('form-ficha').reset();
   clienteEscolhido = null;
+  $('f-sem-pendencia').checked = false;
+  const blocoPasso = $('f-passo').closest('fieldset') || $('f-passo').parentNode;
+  blocoPasso.classList.remove('apagado');
   $('achados-cliente').classList.add('oculto');
   fotoDataUrl = null;
   anexos = [];
@@ -704,6 +757,7 @@ document.querySelectorAll('.cartao-tipo').forEach(b => b.onclick = () => {
   tipoAtual = b.dataset.tipo;
   $('rotulo-tipo').textContent = b.querySelector('b').textContent;
   montarCampos(tipoAtual);
+  ajustarBlocoPasso(tipoAtual);
   montarExperiencia(tipoAtual);
   montarEvidencias(tipoAtual);
   $('passo-tipo').classList.add('oculto');

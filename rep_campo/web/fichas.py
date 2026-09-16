@@ -42,6 +42,8 @@ def bootstrap():
         "expedicoes": C.EXPEDICOES,
         "tipos_evidencia": C.TIPOS_EVIDENCIA,
         "max_anexos": C.MAX_ANEXOS,
+        "relato_obrigatorio_min": C.RELATO_OBRIGATORIO_MIN,
+        "tipos_passo_opcional": list(C.TIPOS_PASSO_OPCIONAL),
         "etapas_jornada": C.ETAPAS_JORNADA,
         "metrica_por_etapa": C.METRICA_POR_ETAPA,
         "dias_minimos_nps": C.DIAS_MINIMOS_ENTRE_NPS,
