@@ -695,15 +695,24 @@ async function sincronizar() {
     } else if ((dados.aceitas || []).length) {
       aviso(dados.aceitas.length + ' ficha(s) enviada(s).');
     }
+    let recusadas = 0, adiadas = 0;
     for (const r of dados.rejeitadas || []) {
-      // Ficha que o servidor recusa nunca vai entrar. Sem tirar da fila, ela fica
-      // na frente para sempre e segura tudo que vier depois.
+      // "tente_de_novo" e problema de rede ou de banco, nao da ficha: ela fica
+      // na fila e sobe na proxima. Descartar aqui faria o representante perder
+      // o que escreveu em campo por causa de uma falha que ja teria passado.
+      if (r.motivo === 'tente_de_novo') { adiadas++; continue; }
+      // Recusa de verdade nunca vai entrar. Sem tirar da fila, ela fica na
+      // frente para sempre e segura tudo que vier depois.
       const f = fila.find(x => x.uuid === r.uuid);
       await filaTirar(r.uuid);
       if (f) { delete f.foto; delete f.anexos; f.recusada = r.motivo || 'recusada'; await enviadaSalvar(f); }
+      recusadas++;
     }
-    if ((dados.rejeitadas || []).length)
-      aviso(dados.rejeitadas.length + ' ficha(s) recusada(s). Veja em "Minhas fichas".', true);
+    if (recusadas)
+      aviso(recusadas + ' ficha(s) recusada(s). Veja em "Minhas fichas".', true);
+    else if (adiadas)
+      aviso(adiadas + ' ficha(s) esperando - o servidor nao respondeu agora. '
+        + 'Continuam guardadas e sobem sozinhas.', true);
   } catch (e) {
     // Offline nao e erro: a fila continua guardada e tenta de novo. Erro do
     // servidor tem que aparecer, senao o numero da fila fica parado sem

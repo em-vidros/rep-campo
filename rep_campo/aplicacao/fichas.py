@@ -24,6 +24,22 @@ def proxima_ocorrencia(db, agora_fn=None):
     return numero_formatado(ano, row["ultimo"])
 
 
+def _passageiro(exc):
+    """Erro de infraestrutura passa; erro de dado nao.
+
+    Conexao caida, banco frio, tempo esgotado: tentar de novo resolve. Dado
+    invalido nunca vai entrar por mais que se insista, e ai segurar a ficha na
+    fila so travaria tudo que vem depois dela.
+    """
+    try:
+        import psycopg
+        if isinstance(exc, (psycopg.OperationalError, psycopg.InterfaceError)):
+            return True
+    except Exception:
+        pass
+    return isinstance(exc, (TimeoutError, ConnectionError, OSError))
+
+
 def salvar_anexos(db, uuid_ficha, lista, salvar_foto=None, agora=None):
     if salvar_foto is None:
         from rep_campo.infra import blob as _blob
@@ -220,10 +236,25 @@ def receber_lote(db, fichas, usuario, salvar_foto=None, agora=None, logger=None)
             ocorrencia = _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome,
                                        usuario, foto_arq,
                                        agora=agora, salvar_foto=salvar_foto)
-        except Exception:
+        except Exception as exc:
             if logger is not None:
-                logger.exception("ficha %s recusada", uuid_f)
-            rejeitadas.append({"uuid": uuid_f[:64], "motivo": "erro_ao_gravar"})
+                logger.exception("ficha %s falhou", uuid_f)
+            # A ficha pode ter entrado antes do erro. Foi o que aconteceu com o
+            # Sipiao em 17/09: a ficha dele esta gravada e completa no banco, e
+            # o app dizia "recusada". Perguntar ao banco antes de dar a noticia.
+            try:
+                if db.execute("SELECT 1 FROM fichas WHERE uuid = %s",
+                              (uuid_f,)).fetchone():
+                    aceitas.append(uuid_f)
+                    continue
+            except Exception:
+                pass
+            # Queda de conexao, banco frio, tempo esgotado: isso passa. Recusar
+            # de vez faz o representante perder o que escreveu em campo por causa
+            # de um solucao que ja teria dado certo no minuto seguinte.
+            rejeitadas.append({"uuid": uuid_f[:64],
+                               "motivo": "tente_de_novo" if _passageiro(exc)
+                                         else "erro_ao_gravar"})
             continue
         if ocorrencia:
             ocorrencias.append({"uuid": uuid_f, "numero": ocorrencia})
