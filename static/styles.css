@@ -279,3 +279,15 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 }
 #linha-sem-pendencia input{width:19px;height:19px;flex:none}
 .geo.falhou small{display:block;margin-top:4px;line-height:1.4;opacity:.9}
+
+/* ---- responder o recado ---- */
+/* Responder E marcar como lido: nao ha botao de "li" sem escrever nada. */
+.responder{display:flex;flex-direction:column;gap:7px;margin-top:9px}
+.responder textarea{
+  width:100%;padding:9px 11px;border:1px solid var(--borda);border-radius:8px;
+  font-family:inherit;font-size:.95rem;background:#fff;color:var(--texto);resize:vertical
+}
+.responder .mini{align-self:flex-start}
+.recado-geral .prazo,.missao .prazo{
+  display:block;margin-top:3px;font-size:.78rem;color:var(--cinza)
+}

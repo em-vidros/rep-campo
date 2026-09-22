@@ -22,6 +22,9 @@ PENDENTES = (ABERTO, LIDO)
 
 MAX_TEXTO = 600
 MAX_RESPOSTA = 600
+# O recado so fecha com uma resposta escrita - e o retorno que o gestor
+# espera. Curto o bastante para nao virar obstaculo em campo.
+RESPOSTA_MIN = 5
 
 # Acima de tudo que a sugestao pontua hoje (o maior e 120, de quem parou de
 # comprar). Pedido direto do gestor nao disputa lugar com heuristica.

@@ -630,7 +630,7 @@ $('form-ficha').addEventListener('submit', async ev => {
   const uuidSalvo = ficha.uuid;
   limparForm();
   aviso('Ficha salva no celular.');
-  if (codSalvo) await perguntarMissoes(codSalvo, uuidSalvo);
+  if (codSalvo) await perguntarMissoes(codSalvo);
   atualizarStatus();
   sincronizar();
 });
@@ -958,12 +958,8 @@ const recadosDoCliente = cod =>
 function blocoMissoes(cod) {
   const lista = recadosDoCliente(cod);
   if (!lista.length) return '';
-  return `<div class="missoes">` + lista.map(r => `
-    <div class="missao">
-      <span class="rotulo-missao">recado de ${esc((r.criado_por_nome || '').split(' ')[0])}</span>
-      ${esc(r.texto)}
-      ${r.prazo ? `<span class="prazo">até ${esc(dataBr(r.prazo))}</span>` : ''}
-    </div>`).join('') + `</div>`;
+  return `<div class="missoes">`
+    + lista.map(r => caixaRecado(r, 'missao')).join('') + `</div>`;
 }
 
 const dataBr = iso => {
@@ -972,57 +968,92 @@ const dataBr = iso => {
   return d.length === 3 ? `${d[2]}/${d[1]}/${d[0]}` : iso;
 };
 
+/* Responder e o jeito de marcar como lido.
+
+   Antes havia so um botao "ok, li" e nenhum lugar para escrever - o Sipiao
+   perguntou onde responder, e a resposta honesta era "em lugar nenhum". Agora
+   o recado so sai da tela com uma resposta escrita: e o retorno que o gestor
+   precisa, e evita o "li" automatico que nao diz nada.
+*/
+const RESPOSTA_MIN = 5;
+
+function caixaRecado(r, classe) {
+  const quem = esc((r.criado_por_nome || '').split(' ')[0]);
+  return `<div class="${classe}" data-recado="${r.id}">
+    <b>${quem}:</b> ${esc(r.texto)}
+    ${r.prazo ? `<span class="prazo">até ${esc(dataBr(r.prazo))}</span>` : ''}
+    <div class="responder">
+      <textarea rows="2" data-resp="${r.id}"
+        placeholder="responda aqui — o que você fez, ou o que descobriu"></textarea>
+      <button type="button" class="mini" data-enviar="${r.id}">Responder e marcar como lido</button>
+    </div>
+  </div>`;
+}
+
+/* Um handler so para os dois lugares onde o recado aparece: a faixa do topo e
+   o cartao do cliente. */
+async function responderRecado(id, caixa) {
+  const campo = caixa.querySelector(`[data-resp="${id}"]`);
+  const texto = (campo.value || '').trim();
+  if (texto.length < RESPOSTA_MIN) {
+    campo.focus();
+    return aviso('Escreva uma resposta antes de marcar como lido.', true);
+  }
+  if (semRede()) {
+    return aviso('Sem sinal para responder agora. Tente quando voltar a rede.', true);
+  }
+  try {
+    const r = await fetch(`/api/meus-recados/${id}/concluir`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resposta: texto }),
+    });
+    if (!r.ok) return aviso('Nao consegui enviar a resposta agora.', true);
+  } catch (e) {
+    return aviso('Sem sinal para responder agora. Tente quando voltar a rede.', true);
+  }
+  tirarRecadoDoCache(id);
+  const bloco = caixa.querySelector(`[data-recado="${id}"]`);
+  if (bloco) bloco.remove();
+  const faixa = $('faixa-recados');
+  if (faixa && !faixa.querySelector('[data-recado]')) faixa.classList.add('oculto');
+  aviso('Respondido. O Ricardo ja ve aqui.');
+}
+
+function tirarRecadoDoCache(id) {
+  const rec = CFG.recados || {};
+  rec.gerais = (rec.gerais || []).filter(x => x.id !== id);
+  const por = rec.por_cliente || {};
+  for (const cod of Object.keys(por)) {
+    por[cod] = por[cod].filter(x => x.id !== id);
+    if (!por[cod].length) delete por[cod];
+  }
+  cacheGravar('cfg', CFG);
+}
+
 function pintarRecadosGerais() {
   const faixa = $('faixa-recados');
   if (!faixa) return;
   const gerais = ((CFG.recados || {}).gerais || []);
   if (!gerais.length) return faixa.classList.add('oculto');
-  faixa.innerHTML = gerais.map(r => `
-    <div class="recado-geral" data-recado="${r.id}">
-      <b>${esc((r.criado_por_nome || '').split(' ')[0])}:</b> ${esc(r.texto)}
-      <button class="mini" data-lido="${r.id}">ok, li</button>
-    </div>`).join('');
+  faixa.innerHTML = gerais.map(r => caixaRecado(r, 'recado-geral')).join('');
   faixa.classList.remove('oculto');
-  faixa.onclick = async ev => {
-    const b = ev.target.closest('[data-lido]');
-    if (!b) return;
-    const id = Number(b.dataset.lido);
-    b.closest('[data-recado]').remove();
-    if (!faixa.querySelector('[data-recado]')) faixa.classList.add('oculto');
-    // some da tela na hora; se estiver sem sinal, o servidor sabe no proximo boot
-    try {
-      await fetch('/api/meus-recados/lidos', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ids: [id] }),
-      });
-    } catch (e) { /* sem rede: fica marcado como nao lido, e so */ }
-  };
 }
 
-/* Pergunta se a missao foi cumprida logo depois de salvar a ficha daquele
-   cliente. E o unico momento em que ele tem o assunto fresco na cabeca. */
-async function perguntarMissoes(cod, uuidFicha) {
+// vale para a faixa do topo e para o cartao do cliente
+document.addEventListener('click', ev => {
+  const b = ev.target.closest('[data-enviar]');
+  if (!b) return;
+  responderRecado(Number(b.dataset.enviar), b.closest('[data-recado]').parentNode);
+});
+
+/* Depois de salvar a ficha, lembra da missao daquele cliente. A resposta nao
+   cabe aqui (o formulario ja se fechou): o recado continua no cartao do
+   cliente, com a caixa de resposta, ate ele responder. */
+async function perguntarMissoes(cod) {
   const lista = recadosDoCliente(cod);
-  for (const r of lista) {
-    if (!confirm(`Recado de ${(r.criado_por_nome || '').split(' ')[0]}:\n\n"${r.texto}"\n\nVocê resolveu isso nesta visita?`)) continue;
-    const resposta = prompt('O que dá para responder? (opcional)') || '';
-    try {
-      const req = await fetch(`/api/meus-recados/${r.id}/concluir`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ resposta, ficha_uuid: uuidFicha }),
-      });
-      if (req.ok) {
-        const por = (CFG.recados || {}).por_cliente || {};
-        por[cod] = (por[cod] || []).filter(x => x.id !== r.id);
-        if (!por[cod].length) delete por[cod];
-        await cacheGravar('cfg', CFG);
-      } else {
-        aviso('Sem sinal para confirmar o recado agora - avise quando voltar.');
-      }
-    } catch (e) {
-      aviso('Sem sinal para confirmar o recado agora - avise quando voltar.');
-    }
-  }
+  if (!lista.length) return;
+  aviso('Voce tem ' + lista.length + ' recado(s) deste cliente esperando resposta. '
+    + 'Escolha o cliente de novo para responder.', true);
 }
 
 /* -------------------------------------------------------------- inicializacao */

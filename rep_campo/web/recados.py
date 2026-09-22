@@ -83,5 +83,5 @@ def concluir(rid):
     n = app_recados.concluir(dbmod.get_db(), session["login"], rid,
                              resposta=d.get("resposta"), ficha_uuid=d.get("ficha_uuid"))
     if not n:
-        return jsonify({"erro": "nao_esta_pendente"}), 409
+        return jsonify({"erro": "resposta_obrigatoria"}), 400
     return jsonify({"ok": True})

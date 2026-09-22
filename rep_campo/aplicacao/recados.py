@@ -43,7 +43,11 @@ def marcar_lidos(db, login, ids):
 
 
 def concluir(db, login, rid, resposta=None, ficha_uuid=None):
-    resp = (resposta or "").strip()[:D.MAX_RESPOSTA] or None
+    # Responder E a forma de marcar como lido: sem texto o recado nao fecha.
+    # "Li" sozinho nao diz ao gestor se foi feito, nem o que o cliente falou.
+    resp = (resposta or "").strip()[:D.MAX_RESPOSTA]
+    if len(resp) < D.RESPOSTA_MIN:
+        return 0
     n = repo.concluir_recado(db, rid, login, resp, ficha_uuid, agora(), D.PENDENTES)
     db.commit()
     return n
