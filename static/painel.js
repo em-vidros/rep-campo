@@ -48,7 +48,7 @@ async function carregarCobertura() {
       <div class="rot">clientes vencidos</div></div>
     <div class="cartao"><div class="num ${d.nunca_visitados ? 'num-alerta' : ''}">${d.nunca_visitados}</div>
       <div class="rot">nunca visitados</div></div>
-    <div class="cartao"><div class="num">${brl(d.risco_reais)}</div>
+    <div class="cartao"><div class="num moeda" title="${esc(brl(d.risco_reais))}">${brl(d.risco_reais)}</div>
       <div class="rot">faturamento 12m sem cobertura</div></div>
     <div class="cartao"><div class="num">${d.total}</div>
       <div class="rot">clientes na seleção</div></div>`;

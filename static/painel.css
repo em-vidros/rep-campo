@@ -9,9 +9,14 @@ body.painel{padding-bottom:60px}
 .painel .aba{flex:0 0 auto;padding:13px 22px}
 .conteudo{max-width:1180px;margin:0 auto;padding:0 22px}
 
-.cartoes-larg{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:20px 0 6px}
+.cartoes-larg{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin:20px 0 6px}
 .cartoes-larg .cartao{background:#fff;border:1px solid var(--borda);border-radius:var(--raio);padding:16px}
-.cartoes-larg .num{font-size:1.9rem;font-weight:700;color:var(--verde);line-height:1.1}
+/* numero nunca quebra no meio: "R$ 25.648.6 / 30" nao se le */
+.cartoes-larg .num{font-size:1.9rem;font-weight:700;color:var(--verde);line-height:1.1;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+/* valor em reais e estruturalmente mais longo que contagem: fonte propria,
+   dimensionada para caber ate a casa dos bilhoes sem estourar o cartao */
+.cartoes-larg .num.moeda{font-size:1.45rem}
 .cartoes-larg .num.num-alerta{color:var(--alerta);padding:0;margin:0}
 .cartoes-larg .rot{font-size:.78rem;color:var(--cinza);margin-top:2px}
 
@@ -86,8 +91,8 @@ tbody tr.nunca{background:#fdecea}
   .cartoes-larg{grid-template-columns:1fr 1fr;gap:9px;margin:14px 0 4px}
   .cartoes-larg .cartao{padding:12px}
   .cartoes-larg .num{font-size:1.35rem}
+  .cartoes-larg .num.moeda{font-size:1.02rem}
   .cartoes-larg .rot{font-size:.71rem;line-height:1.25}
-  .cartoes-larg .num{overflow-wrap:anywhere}   /* R$ 22.406.694 nao estoura a coluna */
 
   .barra-filtros{flex-direction:column;align-items:stretch;gap:10px;padding:12px}
   .barra-filtros label{width:100%}
