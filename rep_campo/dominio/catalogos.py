@@ -25,6 +25,22 @@ RELATO_MIN = 200
 # essencial passava.
 RELATO_OBRIGATORIO_MIN = 40
 
+# Por onde a interacao aconteceu. Video chamada e uma versao da visita
+# presencial - ve o cliente, ve a loja, conversa de verdade. Telefone e mais
+# curto por natureza, e cobrar dele o mesmo preenchimento da visita presencial
+# so faria o representante deixar de registrar o contato.
+CANAIS = [
+    {"id": "presencial", "rot": "Presencial", "dica": "estive na loja do cliente"},
+    {"id": "video", "rot": "Video chamada", "dica": "conversa por video, com o cliente na tela"},
+    {"id": "telefone", "rot": "Telefone / WhatsApp", "dica": "contato rapido, sem ver o cliente"},
+]
+CANAIS_VALIDOS = tuple(c["id"] for c in CANAIS)
+CANAIS_REMOTOS = ("telefone", "video")
+CANAL_PADRAO = "presencial"
+
+# No telefone o relato e mais curto por natureza: o contato tambem e.
+RELATO_MIN_TELEFONE = 20
+
 # Visita de relacionamento nem sempre deixa pendencia. Obrigar um proximo passo
 # aqui so produzia texto de fachada ("manter contato") com data do proprio dia.
 # Nesses tipos ele escreve o passo real OU declara que nao ficou nada pendente.

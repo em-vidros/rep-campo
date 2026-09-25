@@ -273,6 +273,8 @@ COLUNAS = [
     # imprevisto real ("cliente fechado", "estrada interditada") da desculpa.
     "ALTER TABLE viagem_clientes ADD COLUMN IF NOT EXISTS justificativa TEXT",
     "ALTER TABLE viagem_clientes ADD COLUMN IF NOT EXISTS justificado_em TEXT",
+    # por onde a interacao aconteceu: presencial, video chamada ou telefone
+    "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS canal TEXT DEFAULT 'presencial'",
 ]
 
 

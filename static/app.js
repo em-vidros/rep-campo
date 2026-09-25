@@ -70,6 +70,40 @@ const esc = t => String(t == null ? '' : t).replace(/[&<>"']/g,
 // proposito: sem ela o Resumo nao teria como se montar com o aparelho offline.
 const passoOpcional = tipo => (CFG.tipos_passo_opcional || []).includes(tipo);
 
+/* Canal da interacao. Video chamada conta como presencial - ve o cliente, ve a
+   loja. Telefone pede menos preenchimento: cobrar dele a ficha cheia so faria o
+   representante deixar de registrar o contato, e a interacao sumiria da conta. */
+let canalAtual = 'presencial';
+const canalRemoto = c => (CFG.canais_remotos || []).includes(c);
+
+function desenharCanais() {
+  const alvo = $('grade-canais');
+  if (!alvo) return;
+  alvo.innerHTML = (CFG.canais || []).map(c => `
+    <button type="button" class="canal ${c.id === canalAtual ? 'ativo' : ''}" data-canal="${esc(c.id)}">
+      <b>${esc(c.rot)}</b><small>${esc(c.dica)}</small>
+    </button>`).join('');
+  alvo.querySelectorAll('[data-canal]').forEach(b => b.onclick = () => {
+    canalAtual = b.dataset.canal;
+    desenharCanais();
+    ajustarPorCanal();
+  });
+}
+
+/* O que muda de exigencia conforme o canal. */
+function ajustarPorCanal() {
+  const remoto = canalRemoto(canalAtual);
+  const caixaGeo = $('box-geo');
+  if (caixaGeo) caixaGeo.classList.toggle('oculto', remoto);
+  const foto = $('bloco-foto') || ($('f-foto') && $('f-foto').closest('label'));
+  if (foto) foto.classList.toggle('oculto', canalAtual === 'telefone');
+  const cont = $('contador-relato');
+  if (cont) cont.dataset.min = relatoMinimo();
+}
+
+const relatoMinimo = () => canalAtual === 'telefone'
+  ? (CFG.relato_min_telefone || 20) : (CFG.relato_obrigatorio_min || 40);
+
 /* O bloco do proximo passo muda de cara conforme o tipo da visita. */
 function ajustarBlocoPasso(tipo) {
   const opcional = passoOpcional(tipo);
@@ -555,9 +589,8 @@ $('form-ficha').addEventListener('submit', async ev => {
   // O relato e o conteudo da visita - e o que voce le depois. Antes ele podia
   // vir vazio enquanto o proximo passo travava a ficha: o acessorio barrava e o
   // essencial passava.
-  if (relato.length < CFG.relato_obrigatorio_min)
-    erros.push('Conte o que aconteceu na visita (pelo menos '
-      + CFG.relato_obrigatorio_min + ' caracteres).');
+  if (relato.length < relatoMinimo())
+    erros.push('Conte o que aconteceu (pelo menos ' + relatoMinimo() + ' caracteres).');
 
   // Em visita de relacionamento nem sempre fica pendencia. Ele escreve o passo
   // real OU declara que nao ficou nada - as duas respostas sao legitimas, e
@@ -568,7 +601,8 @@ $('form-ficha').addEventListener('submit', async ev => {
       ? 'Escreva o proximo passo, ou marque "sem pendencia".'
       : 'O proximo passo e obrigatorio - sem ele a visita nao conta.');
   }
-  if (FOTO_OBRIGATORIA.includes(tipoAtual) && !fotoDataUrl)
+  // por telefone nao ha o que fotografar: exigir foto so impediria o registro
+  if (FOTO_OBRIGATORIA.includes(tipoAtual) && !fotoDataUrl && canalAtual !== 'telefone')
     erros.push('Este tipo de visita exige foto.');
   if (tipoAtual === 'tecnica') {
     const tp = (document.getElementById('x-problema_tipo') || {}).value;
@@ -603,7 +637,7 @@ $('form-ficha').addEventListener('submit', async ev => {
     ? clienteEscolhido
     : CFG.clientes.find(c => c.nome === cliente);
   const ficha = {
-    uuid: uuid(), tipo: tipoAtual,
+    uuid: uuid(), tipo: tipoAtual, canal: canalAtual,
     cliente_codigo: achado ? achado.codigo : null,
     cliente_nome: cliente,
     prospect: $('f-prospect').checked || !achado ? 1 : 0,
@@ -638,6 +672,7 @@ $('form-ficha').addEventListener('submit', async ev => {
 function limparForm() {
   $('form-ficha').reset();
   clienteEscolhido = null;
+  canalAtual = 'presencial';
   $('f-sem-pendencia').checked = false;
   const blocoPasso = $('f-passo').closest('fieldset') || $('f-passo').parentNode;
   blocoPasso.classList.remove('apagado');
@@ -767,6 +802,8 @@ document.querySelectorAll('.cartao-tipo').forEach(b => b.onclick = () => {
   $('rotulo-tipo').textContent = b.querySelector('b').textContent;
   montarCampos(tipoAtual);
   ajustarBlocoPasso(tipoAtual);
+  desenharCanais();
+  ajustarPorCanal();
   montarExperiencia(tipoAtual);
   montarEvidencias(tipoAtual);
   $('passo-tipo').classList.add('oculto');

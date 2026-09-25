@@ -89,15 +89,18 @@ def _respostas(ficha, etapa, nota):
 
 def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
                   agora=None, salvar_foto=None):
-    from rep_campo.dominio.visitas import classificar_evidencia, relato_curto, validar_nota
+    from rep_campo.dominio.visitas import (canal_valido, classificar_evidencia,
+                                           relato_curto, validar_nota)
     if agora is None:
         from rep_campo.infra.relogio import agora as _agora
         agora = _agora
+    relato = (ficha.get("relato") or "").strip()[:C.LIMITES_TEXTO["relato"]]
+    canal = canal_valido(ficha.get("canal"))
     nivel = classificar_evidencia(
         bool(foto_arq),
         ficha.get("lat") is not None and ficha.get("lon") is not None,
-        bool((ficha.get("proximo_passo") or "").strip()))
-    relato = (ficha.get("relato") or "").strip()[:C.LIMITES_TEXTO["relato"]]
+        bool((ficha.get("proximo_passo") or "").strip()),
+        canal=canal, relato=relato)
     etapa = texto_limitado(ficha, "exp_etapa", C.LIMITES_TEXTO)
     metrica = metrica_para_etapa(etapa) if etapa else None
     nota = validar_nota(ficha.get("exp_nota"))
@@ -111,8 +114,8 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
                 criado_em_disp, recebido_em, foto_arquivo, extra_json,
                 nivel_evidencia, conta_indicador, relato_curto, app_versao,
                 problema_tipo, ocorrencia_num, ocorrencia_status,
-                exp_etapa, exp_nota, exp_comentario, exp_metrica, sem_pendencia)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                exp_etapa, exp_nota, exp_comentario, exp_metrica, sem_pendencia, canal)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """, (
             uuid_f, usuario["uid"], usuario["login"], tipo,
             str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
@@ -134,7 +137,7 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
             texto_limitado(ficha, "problema_tipo", C.LIMITES_TEXTO),
             ocorrencia, "aberta" if ocorrencia else None,
             etapa, nota, texto_limitado(ficha, "exp_comentario", C.LIMITES_TEXTO), metrica,
-            1 if ficha.get("sem_pendencia") else 0,
+            1 if ficha.get("sem_pendencia") else 0, canal,
         ))
         if ocorrencia:
             extra = ficha.get("extra") or {}
