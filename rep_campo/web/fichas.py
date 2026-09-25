@@ -44,7 +44,7 @@ def bootstrap():
         "max_anexos": C.MAX_ANEXOS,
         "relato_obrigatorio_min": C.RELATO_OBRIGATORIO_MIN,
         "tipos_passo_opcional": list(C.TIPOS_PASSO_OPCIONAL),
-        "canais": C.CANAIS,
+        "canais_visita": C.CANAIS_VISITA,
         "canais_remotos": list(C.CANAIS_REMOTOS),
         "relato_min_telefone": C.RELATO_MIN_TELEFONE,
         "etapas_jornada": C.ETAPAS_JORNADA,

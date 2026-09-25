@@ -29,12 +29,12 @@ RELATO_OBRIGATORIO_MIN = 40
 # presencial - ve o cliente, ve a loja, conversa de verdade. Telefone e mais
 # curto por natureza, e cobrar dele o mesmo preenchimento da visita presencial
 # so faria o representante deixar de registrar o contato.
-CANAIS = [
+CANAIS_VISITA = [
     {"id": "presencial", "rot": "Presencial", "dica": "estive na loja do cliente"},
     {"id": "video", "rot": "Video chamada", "dica": "conversa por video, com o cliente na tela"},
     {"id": "telefone", "rot": "Telefone / WhatsApp", "dica": "contato rapido, sem ver o cliente"},
 ]
-CANAIS_VALIDOS = tuple(c["id"] for c in CANAIS)
+CANAIS_VALIDOS = tuple(c["id"] for c in CANAIS_VISITA)
 CANAIS_REMOTOS = ("telefone", "video")
 CANAL_PADRAO = "presencial"
 

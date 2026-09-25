@@ -79,7 +79,7 @@ const canalRemoto = c => (CFG.canais_remotos || []).includes(c);
 function desenharCanais() {
   const alvo = $('grade-canais');
   if (!alvo) return;
-  alvo.innerHTML = (CFG.canais || []).map(c => `
+  alvo.innerHTML = (CFG.canais_visita || []).map(c => `
     <button type="button" class="canal ${c.id === canalAtual ? 'ativo' : ''}" data-canal="${esc(c.id)}">
       <b>${esc(c.rot)}</b><small>${esc(c.dica)}</small>
     </button>`).join('');
