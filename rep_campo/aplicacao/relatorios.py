@@ -9,8 +9,8 @@ pura em `dominio/`. Trocar o transporte (Flask → CLI, job) não mexe em regra.
 import json
 from datetime import datetime, timezone
 
-from rep_campo.aplicacao.viagens import aderencia
-from rep_campo.dominio.viagens import desempenho, dias_desde, ordenar_cobertura
+from rep_campo.aplicacao.viagens import aderencia, dias_desde, ordenar_cobertura
+from rep_campo.dominio.viagens import desempenho
 from rep_campo.dominio import catalogos as C
 from rep_campo.dominio.cobertura import ciclo_do_municipio, fora_da_base
 from rep_campo.dominio.entidades import SinalSugestao
