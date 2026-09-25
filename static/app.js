@@ -911,6 +911,27 @@ async function renderResumo() {
   }
 
   function desenharResumo(d, nota) {
+    // A meta vem primeiro, mas NUNCA sozinha: logo abaixo ficam qualidade e
+    // clientes distintos. O jeito mais facil de bater numero e escrever pouco e
+    // repetir cliente - com os tres na mesma tela isso nao se esconde.
+    const m = d.meta;
+    $('faixa-meta').innerHTML = !m ? '' : `
+      <div class="meta-barra ${m.em_dia ? 'ok' : 'atras'}">
+        <div class="meta-topo">
+          <span class="meta-dia">${m.dia_de_planejamento
+            ? 'Sábado — dia de organizar e planejar a semana'
+            : `Hoje <b>${m.hoje}</b> de ${m.meta_dia}`}</span>
+          <span class="meta-sem"><b>${m.semana}</b> de ${m.meta_semana} na semana</span>
+        </div>
+        <div class="meta-trilho"><div class="meta-cheio" style="width:${Math.min(m.pct_semana, 100)}%"></div></div>
+        <div class="meta-nota">${
+          m.pode_compensar
+            ? `Faltam <b>${m.falta_semana}</b> para fechar a semana — dá para recuperar hoje.`
+          : m.dia_de_planejamento ? 'Semana fechada. Bom momento para montar o roteiro da próxima.'
+          : m.em_dia ? `Em dia. ${m.clientes_semana} cliente(s) diferentes nesta semana.`
+          : `Esperado até aqui: ${m.esperado_ate_hoje}. Faltam <b>${m.falta_semana}</b> para fechar a semana.`
+        }</div>
+      </div>`;
     box.innerHTML = `
       <div class="cartao"><div class="num">${d.total}</div><div class="rot">fichas no mes</div></div>
       <div class="cartao"><div class="num">${d.qualidade}%</div><div class="rot">com proximo passo</div></div>

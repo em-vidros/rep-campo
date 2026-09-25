@@ -716,3 +716,23 @@ def justificar_cliente_roteiro(db, vid, cid, texto, quando):
          WHERE id = %s AND viagem_id = %s AND visitado = 0""",
         (texto, quando, cid, vid))
     return cur.rowcount
+
+
+def contagem_meta(db, usuario_login, hoje_sp, inicio_semana_sp):
+    """Fichas de hoje e da semana, no fuso de Sao Paulo.
+
+    recebido_em e gravado em UTC: contar por LEFT(recebido_em,10) jogaria a
+    ficha das 22h de segunda para terca. Converte antes de cortar o dia.
+    """
+    filtro, args = "", []
+    if usuario_login:
+        filtro = "AND usuario_login = %s"
+        args = [usuario_login]
+    r = db.execute("""
+        SELECT
+          COUNT(*) FILTER (WHERE (recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date = %%s) AS hoje,
+          COUNT(*) FILTER (WHERE (recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date >= %%s) AS semana,
+          COUNT(DISTINCT cliente_nome) FILTER (WHERE (recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date >= %%s) AS clientes_semana
+          FROM fichas WHERE 1=1 %s""" % filtro,
+        [hoje_sp, inicio_semana_sp, inicio_semana_sp] + args).fetchone()
+    return dict(r)

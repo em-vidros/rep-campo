@@ -86,9 +86,23 @@ def resumo():
         dbmod.get_db(), mes,
         usuario_login=None if eh_gestor() else session["login"])
     total, validas = r["total"], r["validas"]
+    # A meta e do representante, por isso so vai quando o resumo esta filtrado
+    # por uma pessoa. Para a gestao o numero somado nao significaria nada.
+    meta = None
+    if not eh_gestor():
+        from datetime import timedelta
+        from zoneinfo import ZoneInfo
+        from rep_campo.dominio.metas import situacao
+        hoje_sp = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+        inicio = hoje_sp - timedelta(days=hoje_sp.weekday())
+        c = repo.contagem_meta(dbmod.get_db(), session["login"], hoje_sp, inicio)
+        meta = situacao(c["hoje"], c["semana"], hoje_sp)
+        meta["clientes_semana"] = c["clientes_semana"]
+
     return jsonify({
         "mes": mes, "total": total, "validas": validas,
         "qualidade": round(100.0 * validas / total, 1) if total else 0.0,
         "por_tipo": r["por_tipo"], "por_nivel": r["por_nivel"],
         "municipios": r["municipios"], "clientes": r["clientes"],
+        "meta": meta,
     })
