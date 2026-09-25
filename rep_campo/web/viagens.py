@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, render_template, request, session
 from rep_campo.aplicacao import relatorios
 from rep_campo.aplicacao.viagens import aderencia, pode_acessar
 from rep_campo.dominio.texto import inteiro
+from rep_campo.dominio.viagens import justificativa_valida
 from rep_campo.infra import db as dbmod
 from rep_campo.infra import repositorios as repo
 from rep_campo.infra.relogio import agora
@@ -113,6 +114,24 @@ def relatorio(vid):
     if not pode_acessar(v, session.get("login"), eh_gestor()):
         return jsonify({"erro": "sem_permissao"}), 403
     return jsonify(relatorios.montar_relatorio_viagem(db, v))
+
+
+@bp.route("/api/viagens/<int:vid>/clientes/<int:cid>/justificar", methods=["POST"])
+@login_obrigatorio
+def justificar(vid, cid):
+    db = dbmod.get_db()
+    v = repo.obter_viagem(db, vid)
+    if not v:
+        return jsonify({"erro": "nao_encontrada"}), 404
+    if not pode_acessar(v, session.get("login"), eh_gestor()):
+        return jsonify({"erro": "sem_permissao"}), 403
+    texto = justificativa_valida((request.get_json(silent=True) or {}).get("justificativa"))
+    if not texto:
+        return jsonify({"erro": "justificativa_curta"}), 400
+    if not repo.justificar_cliente_roteiro(db, vid, cid, texto, agora()):
+        return jsonify({"erro": "nao_encontrado_ou_ja_visitado"}), 409
+    db.commit()
+    return jsonify({"ok": True})
 
 
 @bp.route("/api/visitas-avulsas")

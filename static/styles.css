@@ -291,3 +291,16 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .recado-geral .prazo,.missao .prazo{
   display:block;margin-top:3px;font-size:.78rem;color:var(--cinza)
 }
+
+/* ---- justificativa no roteiro ---- */
+.corpo-roteiro{flex:1}
+.justif{display:flex;gap:7px;margin-top:6px;flex-wrap:wrap}
+.justif input{
+  flex:1;min-width:190px;padding:8px 10px;border:1px solid var(--borda);
+  border-radius:8px;font-size:.92rem;font-family:inherit
+}
+.justif-feita{
+  margin-top:6px;font-size:.86rem;color:#7a4d00;background:#fdf6ea;
+  border-radius:8px;padding:6px 10px;line-height:1.35
+}
+.cartoes-larg .rot small{display:block;font-weight:400;opacity:.85;margin-top:1px}

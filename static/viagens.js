@@ -325,9 +325,17 @@ async function carregarViagens() {
         ${v.clientes.map(c => `
           <div class="item-roteiro ${c.visitado ? 'feito' : ''}">
             <span class="marca-visita">${c.visitado ? '✓' : '○'}</span>
-            <div><b>${esc(c.cliente_nome)}</b>
+            <div class="corpo-roteiro"><b>${esc(c.cliente_nome)}</b>
               <div class="sub">${esc(c.municipio || '—')}${c.motivo ? ' · ' + esc(c.motivo) : ''}
-                ${c.visitado ? ' · visitado em ' + dataBR(c.visitado_em) : ''}</div></div>
+                ${c.visitado ? ' · visitado em ' + dataBR(c.visitado_em) : ''}</div>
+              ${c.visitado ? '' : c.justificativa
+                ? `<div class="justif-feita">não visitado: ${esc(c.justificativa)}</div>`
+                : `<div class="justif">
+                     <input placeholder="não deu para visitar? diga o porquê"
+                            data-just="${c.id}" maxlength="400">
+                     <button type="button" class="mini" data-just-envia="${c.id}">salvar motivo</button>
+                   </div>`}
+            </div>
           </div>`).join('') || '<p class="explica">Sem clientes no roteiro.</p>'}
       </div>
       <div class="bloco">
@@ -339,6 +347,21 @@ async function carregarViagens() {
           ${['planejada', 'em_andamento', 'concluida'].map(st =>
             `<option value="${st}"${st === v.status ? ' selected' : ''}>${st.replace('_', ' ')}</option>`).join('')}
         </select></div>`;
+    $('corpo-' + id).querySelectorAll('[data-just-envia]').forEach(b => b.onclick = async () => {
+      const cid = b.dataset.justEnvia;
+      const campo = $('corpo-' + id).querySelector(`[data-just="${cid}"]`);
+      const texto = (campo.value || '').trim();
+      if (texto.length < 10) { campo.focus(); return msg('Escreva o motivo com um pouco mais de detalhe.', true); }
+      if (!exigeRede('registrar o motivo')) return;
+      const r = await fetch(`/api/viagens/${id}/clientes/${cid}/justificar`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ justificativa: texto }) });
+      if (!r.ok) return msg('Nao consegui salvar o motivo.', true);
+      msg('Motivo registrado.');
+      campo.closest('.justif').outerHTML =
+        `<div class="justif-feita">não visitado: ${esc(texto)}</div>`;
+    });
+
     const btnSalvar = $('corpo-' + id).querySelector('[data-salvar]');
     if (btnSalvar) btnSalvar.onclick = async () => {
       if (!exigeRede('alterar a viagem')) return;
@@ -378,6 +401,11 @@ async function verRelatorio(id, alvo) {
   const d = await pegar('/api/viagens/' + id + '/relatorio');
   if (!d) return msg('Não foi possível montar o relatório.', true);
   const v = d.viagem;
+  // as duas leituras juntas contam a historia: plano baixo com ajustado alto e
+  // planejamento irreal; os dois baixos e execucao
+  const p = d.desempenho || { planejados: d.planejados, visitados_do_plano: d.visitados,
+    justificados: 0, sem_justificativa: 0, extras: 0, realizado_total: d.visitados,
+    aderencia_plano: d.aderencia, aderencia_ajustada: d.aderencia };
   const linha = (rot, val) => `<div class="cc-linha"><span>${esc(rot)}</span><b>${val}</b></div>`;
 
   alvo.innerHTML = `
@@ -387,8 +415,14 @@ async function verRelatorio(id, alvo) {
         ${v.rota ? ' · rota ' + esc(v.rota) : ''} · ${esc(v.responsavel || v.criada_por)}</p>
 
       <div class="cartoes-larg">
-        <div class="cartao"><div class="num">${d.visitados}/${d.planejados}</div>
-          <div class="rot">visitados${d.aderencia !== null ? ' · ' + d.aderencia + '%' : ''}</div></div>
+        <div class="cartao"><div class="num">${p.aderencia_plano === null ? '—' : p.aderencia_plano + '%'}</div>
+          <div class="rot">do plano original<br><small>${p.visitados_do_plano} de ${p.planejados} planejados</small></div></div>
+        <div class="cartao"><div class="num">${p.aderencia_ajustada === null ? '—' : p.aderencia_ajustada + '%'}</div>
+          <div class="rot">do plano ajustado<br><small>descontando ${p.justificados} com motivo registrado</small></div></div>
+        <div class="cartao"><div class="num">${p.realizado_total}</div>
+          <div class="rot">visitas realizadas<br><small>${p.extras} fora do plano</small></div></div>
+        <div class="cartao"><div class="num ${p.sem_justificativa ? 'num-alerta' : ''}">${p.sem_justificativa}</div>
+          <div class="rot">deixados sem motivo</div></div>
         <div class="cartao"><div class="num">${d.fichas.length}</div><div class="rot">fichas</div></div>
         <div class="cartao"><div class="num ${d.ocorrencias.length ? 'num-alerta' : ''}">${d.ocorrencias.length}</div>
           <div class="rot">ocorrências abertas</div></div>

@@ -268,6 +268,11 @@ COLUNAS = [
     # visita de relacionamento pode terminar sem pendencia nenhuma, e isso e
     # resposta legitima. Separa "nao havia o que fazer" de "esqueceu de escrever"
     "ALTER TABLE fichas ADD COLUMN IF NOT EXISTS sem_pendencia INTEGER DEFAULT 0",
+    # Cliente planejado que nao foi visitado: o motivo fica registrado. Sem
+    # justificativa escrita ele conta contra a aderencia - e o que separa o
+    # imprevisto real ("cliente fechado", "estrada interditada") da desculpa.
+    "ALTER TABLE viagem_clientes ADD COLUMN IF NOT EXISTS justificativa TEXT",
+    "ALTER TABLE viagem_clientes ADD COLUMN IF NOT EXISTS justificado_em TEXT",
 ]
 
 

@@ -706,3 +706,13 @@ def rotas_com_cidades(db):
         d = saida.setdefault(r["rota"], {"rota": r["rota"], "cidades": []})
         d["cidades"].append({"cidade": r["cidade"], "clientes": r["clientes"]})
     return sorted(saida.values(), key=lambda x: x["rota"])
+
+
+def justificar_cliente_roteiro(db, vid, cid, texto, quando):
+    """Só cliente ainda não visitado se justifica - visitado não precisa de
+    desculpa, e mudar depois de visitar seria reescrever o passado."""
+    cur = db.execute("""
+        UPDATE viagem_clientes SET justificativa = %s, justificado_em = %s
+         WHERE id = %s AND viagem_id = %s AND visitado = 0""",
+        (texto, quando, cid, vid))
+    return cur.rowcount

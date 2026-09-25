@@ -9,7 +9,8 @@ pura em `dominio/`. Trocar o transporte (Flask → CLI, job) não mexe em regra.
 import json
 from datetime import datetime, timezone
 
-from rep_campo.aplicacao.viagens import aderencia, dias_desde, ordenar_cobertura
+from rep_campo.aplicacao.viagens import aderencia
+from rep_campo.dominio.viagens import desempenho, dias_desde, ordenar_cobertura
 from rep_campo.dominio import catalogos as C
 from rep_campo.dominio.cobertura import ciclo_do_municipio, fora_da_base
 from rep_campo.dominio.entidades import SinalSugestao
@@ -172,11 +173,16 @@ def montar_relatorio_viagem(db, viagem):
     notas = [r["nota"] for r in respostas]
     no_roteiro = {c["cliente_codigo"] for c in roteiro}
     visitados = sum(1 for c in roteiro if c["visitado"])
+    justificados = sum(1 for c in roteiro
+                       if not c["visitado"] and (c.get("justificativa") or "").strip())
+    extras = [f for f in fichas if f["cliente_codigo"] not in no_roteiro]
+    perf = desempenho(len(roteiro), visitados, justificados, len(extras))
     return {
         "viagem": viagem,
         "planejados": len(roteiro),
         "visitados": visitados,
         "aderencia": (aderencia(len(roteiro), visitados) if roteiro else None),
+        "desempenho": perf,
         "nao_visitados": [c for c in roteiro if not c["visitado"]],
         "fichas": fichas,
         "fora_do_roteiro": [f for f in fichas if f["cliente_codigo"] not in no_roteiro],
