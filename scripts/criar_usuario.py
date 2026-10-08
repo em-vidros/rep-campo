@@ -3,7 +3,7 @@
 Cria ou atualiza um usuario do REP Campo.
 A senha NUNCA fica em texto claro: e pedida no terminal e guardada como hash.
 
-Uso:  python scripts/criar_usuario.py <login> "<Nome>" [rep|gestor|admin]
+Uso:  python scripts/criar_usuario.py <login> "<Nome>" [rep|gestor|admin] [ITZ|RAP]
 """
 import getpass
 import os
@@ -25,6 +25,11 @@ def main():
     login = sys.argv[1].strip().lower()
     nome = sys.argv[2].strip()
     papel = (sys.argv[3] if len(sys.argv) > 3 else "rep").strip().lower()
+    # a base chegou quando o segundo representante entrou (Raposa, 08/10)
+    base = (sys.argv[4] if len(sys.argv) > 4 else "ITZ").strip().upper()
+    if base not in ("ITZ", "RAP"):
+        print("[--] base deve ser 'ITZ' ou 'RAP'")
+        sys.exit(1)
     # admin entrou em 02/09: gestor faz todo o operacional, admin tambem
     # administra usuarios e importa dados
     if papel not in ("rep", "gestor", "admin"):
@@ -49,13 +54,13 @@ def main():
     with psycopg.connect(url, autocommit=True) as con:
         con.execute("""
             INSERT INTO usuarios (login, nome, senha_hash, papel, base, ativo, criado_em)
-            VALUES (%s,%s,%s,%s,'ITZ',1,%s)
+            VALUES (%s,%s,%s,%s,%s,1,%s)
             ON CONFLICT(login) DO UPDATE SET
                 nome=excluded.nome, senha_hash=excluded.senha_hash,
-                papel=excluded.papel, ativo=1
-        """, (login, nome, senha_hash, papel,
+                papel=excluded.papel, base=excluded.base, ativo=1
+        """, (login, nome, senha_hash, papel, base,
               datetime.now(timezone.utc).isoformat(timespec="seconds")))
-    print("[OK] usuario '%s' (%s) pronto." % (login, papel))
+    print("[OK] usuario '%s' (%s, base %s) pronto." % (login, papel, base))
 
 
 if __name__ == "__main__":
