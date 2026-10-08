@@ -915,20 +915,58 @@ document.addEventListener('click', ev => {
 
 /* ------------------------------------------------------------- renderizacao */
 async function renderFichas() {
-  const fila = await filaPor(), enviadas = await enviadasPor();
   const box = $('lista-fichas');
-  const todas = [
-    ...fila.map(f => ({ ...f, _pendente: true })),
-    ...enviadas.sort((a, b) => (b.enviado_em || '').localeCompare(a.enviado_em || '')),
-  ];
-  if (!todas.length) { box.innerHTML = '<div class="vazio">Nenhuma ficha ainda.</div>'; return; }
-  box.innerHTML = todas.slice(0, 80).map(f => {
+  const fila = await filaPor(), enviadas = await enviadasPor();
+
+  /* O historico mora no SERVIDOR, nao no aparelho.
+
+     Antes esta lista saia so do IndexedDB do celular. Quando o navegador limpou
+     os dados do site, o Sipiao abriu "Minhas fichas" e viu "Nenhuma ficha
+     ainda" - com as 29 fichas dele intactas no servidor o tempo todo. O mesmo
+     aconteceria ao trocar de aparelho.
+
+     A fila continua vindo do aparelho, porque ela so existe la. */
+  let doServidor = [];
+  try {
+    const r = await fetch('/api/fichas?limite=200');
+    if (r.ok) doServidor = (await r.json()).fichas || [];
+  } catch (e) { /* sem rede: segue com o que o aparelho tem */ }
+
+  const vistos = new Set();
+  const todas = [];
+  for (const f of fila) { todas.push({ ...f, _pendente: true }); vistos.add(f.uuid); }
+  for (const f of doServidor) {
+    if (vistos.has(f.uuid)) continue;
+    vistos.add(f.uuid);
+    todas.push({ ...f, _doServidor: true });
+  }
+  // recusadas so existem no aparelho; as enviadas que o servidor ja trouxe caem fora
+  for (const f of enviadas) {
+    if (vistos.has(f.uuid)) continue;
+    vistos.add(f.uuid);
+    todas.push(f);
+  }
+
+  const quando = f => f.recebido_em || f.enviado_em || f.criado_em_disp || '';
+  todas.sort((a, b) => String(quando(b)).localeCompare(String(quando(a))));
+
+  if (!todas.length) {
+    box.innerHTML = semRede()
+      ? '<div class="vazio">Sem internet e sem cópia no aparelho. Abra uma vez '
+        + 'com sinal para ver o seu histórico.</div>'
+      : '<div class="vazio">Nenhuma ficha ainda.</div>';
+    return;
+  }
+  box.innerHTML = todas.slice(0, 120).map(f => {
     const selo = f.recusada ? `<span class="selo fraco">recusada: ${esc(f.recusada)}</span>`
       : f._pendente ? '<span class="selo pendente">na fila</span>'
       : '<span class="selo forte">enviada</span>';
-    const d = new Date(f.criado_em_disp || Date.now());
+    const d = new Date(quando(f) || Date.now());
+    const data = isNaN(d) ? '' : `${d.toLocaleDateString('pt-BR')} `
+      + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const canal = f.canal && f.canal !== 'presencial' ? ` · ${esc(f.canal)}` : '';
     return `<div class="item"><div class="item-topo"><b>${esc(f.cliente_nome)}</b>${selo}</div>
-      <div class="meta">${esc(f.tipo)} - ${esc(f.municipio || '')} - ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+      <div class="meta">${esc(f.tipo)}${canal} - ${esc(f.municipio || '')} - ${data}</div>
       <div class="meta">proximo passo: ${esc(f.proximo_passo || '-')}</div></div>`;
   }).join('');
 }
