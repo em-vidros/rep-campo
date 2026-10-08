@@ -914,6 +914,8 @@ document.addEventListener('click', ev => {
 });
 
 /* ------------------------------------------------------------- renderizacao */
+let FICHAS_VISTA = [];
+
 async function renderFichas() {
   const box = $('lista-fichas');
   const fila = await filaPor(), enviadas = await enviadasPor();
@@ -938,37 +940,105 @@ async function renderFichas() {
   for (const f of doServidor) {
     if (vistos.has(f.uuid)) continue;
     vistos.add(f.uuid);
-    todas.push({ ...f, _doServidor: true });
+    todas.push(f);
   }
-  // recusadas so existem no aparelho; as enviadas que o servidor ja trouxe caem fora
   for (const f of enviadas) {
     if (vistos.has(f.uuid)) continue;
     vistos.add(f.uuid);
     todas.push(f);
   }
+  todas.sort((a, b) => String(quandoDaFicha(b)).localeCompare(String(quandoDaFicha(a))));
+  FICHAS_VISTA = todas;
+  pintarFichas();
+}
 
-  const quando = f => f.recebido_em || f.enviado_em || f.criado_em_disp || '';
-  todas.sort((a, b) => String(quando(b)).localeCompare(String(quando(a))));
+const quandoDaFicha = f => f.recebido_em || f.enviado_em || f.criado_em_disp || '';
 
-  if (!todas.length) {
-    box.innerHTML = semRede()
-      ? '<div class="vazio">Sem internet e sem cópia no aparelho. Abra uma vez '
-        + 'com sinal para ver o seu histórico.</div>'
-      : '<div class="vazio">Nenhuma ficha ainda.</div>';
+const campoBuscaFichas = document.getElementById('busca-fichas');
+if (campoBuscaFichas) campoBuscaFichas.addEventListener('input', pintarFichas);
+
+function pintarFichas() {
+  const box = $('lista-fichas');
+  const termo = semAcento(($('busca-fichas') || {}).value || '').trim();
+  const lista = !termo ? FICHAS_VISTA : FICHAS_VISTA.filter(f =>
+    semAcento(f.cliente_nome).includes(termo) || semAcento(f.municipio).includes(termo));
+
+  const contador = $('conta-fichas');
+  if (contador) contador.textContent = FICHAS_VISTA.length
+    ? `${lista.length} de ${FICHAS_VISTA.length} ficha(s) · toque para abrir`
+    : '';
+
+  if (!lista.length) {
+    box.innerHTML = FICHAS_VISTA.length
+      ? '<div class="vazio">Nenhuma ficha com esse nome.</div>'
+      : (semRede()
+        ? '<div class="vazio">Sem internet e sem cópia no aparelho. Abra uma vez '
+          + 'com sinal para ver o seu histórico.</div>'
+        : '<div class="vazio">Nenhuma ficha ainda.</div>');
     return;
   }
-  box.innerHTML = todas.slice(0, 120).map(f => {
+  box.innerHTML = lista.slice(0, 120).map((f, i) => {
     const selo = f.recusada ? `<span class="selo fraco">recusada: ${esc(f.recusada)}</span>`
       : f._pendente ? '<span class="selo pendente">na fila</span>'
       : '<span class="selo forte">enviada</span>';
-    const d = new Date(quando(f) || Date.now());
+    const d = new Date(quandoDaFicha(f) || Date.now());
     const data = isNaN(d) ? '' : `${d.toLocaleDateString('pt-BR')} `
       + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const canal = f.canal && f.canal !== 'presencial' ? ` · ${esc(f.canal)}` : '';
-    return `<div class="item"><div class="item-topo"><b>${esc(f.cliente_nome)}</b>${selo}</div>
+    return `<div class="item ficha-minha" data-abrir-ficha="${i}">
+      <div class="item-topo"><b>${esc(f.cliente_nome)}</b>${selo}</div>
       <div class="meta">${esc(f.tipo)}${canal} - ${esc(f.municipio || '')} - ${data}</div>
-      <div class="meta">proximo passo: ${esc(f.proximo_passo || '-')}</div></div>`;
+      <div class="meta">proximo passo: ${esc(f.proximo_passo || '-')}</div>
+      <div class="corpo-ficha oculto"></div>
+    </div>`;
   }).join('');
+
+  box.querySelectorAll('[data-abrir-ficha]').forEach(el => el.onclick = () => {
+    const f = lista[Number(el.dataset.abrirFicha)];
+    const corpo = el.querySelector('.corpo-ficha');
+    const abrindo = corpo.classList.contains('oculto');
+    if (abrindo && !corpo.innerHTML) corpo.innerHTML = detalheDaFicha(f);
+    corpo.classList.toggle('oculto', !abrindo);
+    el.classList.toggle('aberta', abrindo);
+  });
+}
+
+/* Ele pediu para reler o que escreveu antes de voltar no cliente. A lista
+   mostrava so o cabecalho; o relato, que e o conteudo da visita, ficava
+   inalcancavel depois de salvo. */
+function detalheDaFicha(f) {
+  const bloco = (rot, val) => val
+    ? `<div class="bloco-ficha"><h4>${esc(rot)}</h4><p>${esc(val)}</p></div>` : '';
+  let extra = '';
+  try {
+    const e = typeof f.extra_json === 'string' ? JSON.parse(f.extra_json) : (f.extra || {});
+    extra = Object.entries(e || {})
+      .filter(([k, v]) => v && typeof v !== 'object')
+      .map(([k, v]) => `<div class="cc-linha"><span>${esc(k.replace(/_/g, ' '))}</span><b>${esc(v)}</b></div>`)
+      .join('');
+  } catch (err) { /* ficha antiga sem extra: segue sem o bloco */ }
+
+  return bloco('Objetivo', f.objetivo)
+    + bloco('O que aconteceu', f.relato)
+    + (f.proximo_passo
+        ? `<div class="bloco-ficha"><h4>Próximo passo</h4><p>${esc(f.proximo_passo)}
+             ${f.prox_responsavel ? `<br><small>quem: ${esc(f.prox_responsavel)}</small>` : ''}
+             ${f.prox_data ? `<br><small>quando: ${esc(dataBr(f.prox_data))}</small>` : ''}
+             ${f.encaminhado_para ? `<br><small>encaminhado: ${esc(f.encaminhado_para)}</small>` : ''}</p></div>`
+        : f.sem_pendencia
+          ? '<div class="bloco-ficha"><h4>Próximo passo</h4><p>sem pendência</p></div>' : '')
+    + (f.exp_nota != null
+        ? `<div class="bloco-ficha"><h4>Pesquisa</h4><p>nota ${esc(f.exp_nota)}
+             ${f.exp_etapa ? '· ' + esc(f.exp_etapa) : ''}
+             ${f.exp_comentario ? `<br><small>"${esc(f.exp_comentario)}"</small>` : ''}</p></div>` : '')
+    + (f.ocorrencia_num
+        ? `<div class="bloco-ficha"><h4>Ocorrência</h4><p>${esc(f.ocorrencia_num)}
+             ${f.ocorrencia_status ? '· ' + esc(f.ocorrencia_status) : ''}</p></div>` : '')
+    + (extra ? `<div class="bloco-ficha"><h4>Detalhes</h4>${extra}</div>` : '')
+    + (f.foto_arquivo
+        ? `<div class="bloco-ficha"><h4>Foto</h4><img class="ficha-foto" src="/foto/${esc(f.foto_arquivo)}" alt="foto da visita"></div>` : '')
+    + (f.lat ? `<div class="bloco-ficha"><h4>Local</h4><p><a target="_blank" rel="noopener"
+         href="https://maps.google.com/?q=${f.lat},${f.lon}">ver no mapa</a></p></div>` : '');
 }
 
 async function renderResumo() {
