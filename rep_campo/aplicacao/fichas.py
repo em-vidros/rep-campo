@@ -195,6 +195,7 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
                  resp["nota"], resp["comentario"], resp["unidade"],
                  agora(), usuario["login"]))
         cod = str(ficha.get("cliente_codigo") or "")[:40]
+        achou = None
         if cod:
             achou = db.execute("""
                 UPDATE viagem_clientes SET visitado = 1, ficha_uuid = %s, visitado_em = %s
@@ -207,6 +208,26 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
             if achou:
                 db.execute("UPDATE fichas SET viagem_id = %s WHERE uuid = %s",
                            (achou["viagem_id"], uuid_f))
+
+        # Cliente fora do roteiro - ou viagem sem roteiro nenhum - ainda assim
+        # pertence aquela viagem se caiu dentro das datas dela. Sem isto o
+        # relatorio da semana de Balsas dizia "0 fichas" com treze visitas
+        # feitas: o vinculo so existia pelo cliente planejado, e nao havia
+        # planejado. Relatorio que diz "13 visitas, sem plano para comparar"
+        # informa; um que diz "0" mente.
+        if not achou:
+            db.execute("""
+                UPDATE fichas SET viagem_id = (
+                    SELECT id FROM viagens
+                     WHERE status IN ('planejada','em_andamento')
+                       AND (criada_por = %s OR responsavel = %s)
+                       AND inicio IS NOT NULL AND fim IS NOT NULL
+                       AND (fichas.recebido_em::timestamptz
+                            AT TIME ZONE 'America/Sao_Paulo')::date
+                           BETWEEN inicio::date AND fim::date
+                     ORDER BY id DESC LIMIT 1)
+                 WHERE uuid = %s AND viagem_id IS NULL
+            """, (usuario["login"], usuario["login"], uuid_f))
         salvar_anexos(db, uuid_f, ficha.get("anexos"),
                       salvar_foto=salvar_foto, agora=agora)
     return ocorrencia
