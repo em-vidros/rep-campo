@@ -35,6 +35,13 @@ def manifest():
                                "manifest.webmanifest")
 
 
+@bp.route("/guia")
+def guia():
+    """Guia do representante. Publico de proposito: o link vai por WhatsApp
+    para o celular do representante, antes de ele ter login."""
+    return render_template("guia.html")
+
+
 @bp.route("/foto/<nome>")
 @login_obrigatorio
 def foto(nome):
