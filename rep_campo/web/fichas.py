@@ -34,6 +34,7 @@ def bootstrap():
         "municipios": municipios,
         "tipos": C.TIPOS,
         "problemas": C.PROBLEMAS_TECNICOS,
+        "mudancas_cadastro": C.MUDANCAS_CADASTRO,
         "responsaveis": C.RESPONSAVEIS,
         "cesta_preco": C.CESTA_PRECO,
         "concorrentes": C.CONCORRENTES,

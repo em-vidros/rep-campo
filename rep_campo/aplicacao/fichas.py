@@ -14,6 +14,37 @@ from rep_campo.dominio.ocorrencias import numero_formatado
 from rep_campo.dominio.texto import RE_UUID, num_float, texto_limitado
 
 
+def _descricao_ocorrencia(tipo, relato, extra):
+    """O que quem vai corrigir le na fila.
+
+    Na ficha de cadastro o essencial (o dado novo) esta nos campos do tipo, nao
+    no relato. Sem trazer para ca, quem abre a ocorrencia le o relato e ainda
+    precisa cacar a ficha para descobrir qual e o endereco certo.
+    """
+    if tipo != "cadastro":
+        return relato
+    rotulos = [("dado_antigo", "hoje no sistema"), ("dado_novo", "passa a ser"),
+               ("cidade_nova", "cidade nova"), ("quem_informou", "informado por")]
+    partes = []
+    for chave, rotulo in rotulos:
+        valor = str(extra.get(chave) or "").strip()
+        if valor:
+            partes.append("%s: %s" % (rotulo, valor))
+    cabecalho = " | ".join(partes)
+    return (cabecalho + "\n\n" + relato) if cabecalho else relato
+
+
+def _dono_ocorrencia(tipo, ficha):
+    """Ocorrencia sem dono nao e cobrada de ninguem."""
+    escolhido = texto_limitado(ficha, "prox_responsavel", C.LIMITES_TEXTO)
+    if escolhido:
+        return escolhido
+    escolhido = texto_limitado(ficha, "encaminhado_para", C.LIMITES_TEXTO)
+    if escolhido:
+        return escolhido
+    return C.RESPONSAVEL_CADASTRO if tipo == "cadastro" else None
+
+
 def proxima_ocorrencia(db, agora_fn=None):
     from datetime import datetime, timezone
     ano = datetime.now(timezone.utc).strftime("%Y")
@@ -106,7 +137,8 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
     nota = validar_nota(ficha.get("exp_nota"))
 
     with db.transaction():
-        ocorrencia = proxima_ocorrencia(db) if tipo == "tecnica" else None
+        ocorrencia = (proxima_ocorrencia(db)
+                      if tipo in C.TIPOS_COM_OCORRENCIA else None)
         db.execute("""
             INSERT INTO fichas (uuid, usuario_id, usuario_login, tipo, cliente_codigo,
                 cliente_nome, prospect, municipio, objetivo, relato, proximo_passo,
@@ -148,13 +180,15 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
                      responsavel, prazo, ficha_uuid, foto_arquivo)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,'aberta',%s,%s,%s,%s)
                 ON CONFLICT (numero) DO NOTHING
-            """, (ocorrencia, agora(), usuario["login"], "Comercial",
+            """, (ocorrencia, agora(), usuario["login"],
+                  C.SETOR_POR_TIPO.get(tipo, C.SETOR_PADRAO),
                   "Visita do representante",
                   str(ficha.get("cliente_codigo") or "")[:40] or None, cliente_nome,
                   texto_limitado(ficha, "municipio", C.LIMITES_TEXTO),
                   texto_limitado(ficha, "problema_tipo", C.LIMITES_TEXTO),
-                  relato, str(extra.get("pedido_nf") or "")[:60] or None,
-                  texto_limitado(ficha, "prox_responsavel", C.LIMITES_TEXTO),
+                  _descricao_ocorrencia(tipo, relato, extra),
+                  str(extra.get("pedido_nf") or "")[:60] or None,
+                  _dono_ocorrencia(tipo, ficha),
                   texto_limitado(ficha, "prox_data", C.LIMITES_TEXTO),
                   uuid_f, foto_arq))
         # Ficha de preco vira serie historica consultavel. Dentro do JSON o dado

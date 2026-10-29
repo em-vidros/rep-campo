@@ -9,7 +9,29 @@ TIPOS = {
     "preco": {"label": "Pesquisa de preco", "foto": "obrigatoria"},
     "voz": {"label": "Voz do cliente", "foto": "opcional"},
     "evento": {"label": "Evento", "foto": "obrigatoria"},
+    "cadastro": {"label": "Atualizacao de cadastro", "foto": "opcional"},
 }
+
+# O que o representante encontra errado no cadastro do cliente. Lista fechada:
+# "mudou o endereco" e "ENDERECO NOVO" seriam dois assuntos diferentes no
+# relatorio, e ninguem conseguiria contar quantas correcoes de endereco houve.
+MUDANCAS_CADASTRO = [
+    "Endereco", "Cidade", "Telefone", "Contato / responsavel",
+    "Razao social ou CNPJ", "Ponto de referencia", "Outro",
+]
+
+# Tipos de ficha que abrem ocorrencia: ganham numero, responsavel, prazo e
+# status. Sem isto a informacao fica so no relato e depende de alguem ler.
+TIPOS_COM_OCORRENCIA = ("tecnica", "cadastro")
+
+# Para onde a ocorrencia vai. O cadastro nao e problema de producao: quem
+# resolve e quem edita o cliente no ERP, nao o Comercial.
+SETOR_POR_TIPO = {"tecnica": "Comercial", "cadastro": "Cadastro"}
+SETOR_PADRAO = "Comercial"
+
+# Quem recebe a correcao de cadastro quando o representante nao escolhe
+# ninguem. Nunca deixar em branco: ocorrencia sem dono nao e cobrada.
+RESPONSAVEL_CADASTRO = "Cadastro"
 
 MUNICIPIOS_MIGRACAO = [
     "Santa Ines/MA", "Ze Doca/MA", "Bom Jardim/MA", "Governador Newton Belo/MA",
@@ -44,7 +66,9 @@ RELATO_MIN_TELEFONE = 20
 # Visita de relacionamento nem sempre deixa pendencia. Obrigar um proximo passo
 # aqui so produzia texto de fachada ("manter contato") com data do proprio dia.
 # Nesses tipos ele escreve o passo real OU declara que nao ficou nada pendente.
-TIPOS_PASSO_OPCIONAL = ("cordialidade",)
+# Em cadastro o proximo passo e de outra pessoa (atualizar o ERP) e ja esta
+# registrado na ocorrencia - exigir aqui so produziria texto de enfeite.
+TIPOS_PASSO_OPCIONAL = ("cordialidade", "cadastro")
 
 PROBLEMAS_TECNICOS = [
     "Arranhao", "Ralado", "Quebra espontanea", "Avaria da peca",
@@ -59,8 +83,8 @@ RESPONSAVEIS = {
                         "Keliane (aluminio)"],
     "Consultores Bel": ["Clicia", "Jessica"],
     "Consultores Sti": ["Jadson", "Thayna"],
-    "Areas": ["Gerente de Producao", "PCP", "Qualidade", "Expedicao",
-              "Financeiro", "Diretoria"],
+    "Areas": ["Cadastro", "Gerente de Producao", "PCP", "Qualidade",
+              "Expedicao", "Financeiro", "Diretoria"],
 }
 
 ETAPAS_JORNADA = [

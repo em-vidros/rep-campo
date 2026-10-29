@@ -186,6 +186,15 @@ const CAMPOS = {
     { id: 'principais_contatos', rot: '3 principais contatos', tipo: 'textarea' },
     { id: 'leitura', rot: 'Leitura do evento', tipo: 'textarea' },
   ],
+  cadastro: [
+    { id: 'problema_tipo', rot: 'O que mudou *', tipo: 'mudancas' },
+    { id: 'dado_novo', rot: 'Como fica agora *', tipo: 'textarea',
+      ph: 'escreva completo: rua, numero, bairro, cidade' },
+    { id: 'cidade_nova', rot: 'Cidade nova (so se mudou de cidade)', tipo: 'text',
+      ph: 'muda a rota e a tabela - nao deixe em branco se mudou' },
+    { id: 'dado_antigo', rot: 'Como esta hoje no sistema', tipo: 'text' },
+    { id: 'quem_informou', rot: 'Quem informou (nome e cargo)', tipo: 'text' },
+  ],
 };
 const FOTO_OBRIGATORIA = ['tecnica', 'prospeccao', 'preco', 'evento'];
 
@@ -208,6 +217,10 @@ function montarCampos(tipo) {
       el = document.createElement('select');
       el.innerHTML = '<option value=""></option>' +
         (CFG.concorrentes || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+    } else if (c.tipo === 'mudancas') {
+      el = document.createElement('select');
+      el.innerHTML = '<option value=""></option>' +
+        (CFG.mudancas_cadastro || []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
     } else if (c.tipo === 'problemas') {
       el = document.createElement('select');
       el.innerHTML = '<option value=""></option>' +
@@ -255,7 +268,7 @@ function montarCampos(tipo) {
     ? 'Foto <b class="obrig">obrigatoria neste tipo</b>'
     : 'Foto <span class="dica">(opcional)</span>')
     + ' <span class="dica-ajuda" data-dica="' + dicaFoto + '">?</span>';
-  $('wrap-encaminhado').classList.toggle('oculto', !['comercial', 'prospeccao', 'tecnica'].includes(tipo));
+  $('wrap-encaminhado').classList.toggle('oculto', !['comercial', 'prospeccao', 'tecnica', 'cadastro'].includes(tipo));
 }
 
 /* Pesquisa de experiencia - vai em TODA visita, com pergunta pertinente ao tipo.
@@ -610,6 +623,16 @@ $('form-ficha').addEventListener('submit', async ev => {
     if (!tp) erros.push('Escolha o tipo de ocorrência.');
     if (tp === 'Outros' && !outro.trim())
       erros.push('Descreva a ocorrência no campo "Qual?".');
+  }
+  if (tipoAtual === 'cadastro') {
+    const oque = (document.getElementById('x-problema_tipo') || {}).value;
+    const novo = (document.getElementById('x-dado_novo') || {}).value || '';
+    const cidade = (document.getElementById('x-cidade_nova') || {}).value || '';
+    if (!oque) erros.push('Escolha o que mudou.');
+    // sem o dado novo a ocorrência não serve para ninguém corrigir nada
+    if (!novo.trim()) erros.push('Escreva como fica agora o dado correto.');
+    if (oque === 'Cidade' && !cidade.trim())
+      erros.push('Preencha a cidade nova - é ela que muda a rota.');
   }
 
   const caixa = $('erros-form');
