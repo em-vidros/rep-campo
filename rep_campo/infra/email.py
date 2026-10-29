@@ -67,11 +67,18 @@ def _por_smtp(assunto, corpo, para, remetente):
 
 
 def enviar(assunto, corpo, para):
-    """Devolve True se saiu por algum caminho. Nunca levanta."""
-    if not para:
-        print("[--] sem destinatario de e-mail configurado. O aviso seria:")
-        print("    %s\n%s" % (assunto, corpo))
-        return False
+    """Devolve True se saiu por algum caminho. Nunca levanta.
+
+    Quando nao sai, o texto vai para o log: o aviso nao pode simplesmente
+    sumir so porque o canal nao estava configurado ou falhou.
+    """
     remetente = os.environ.get("EMAIL_REMETENTE") or "REP Campo <onboarding@resend.dev>"
-    return (_por_resend(assunto, corpo, para, remetente)
-            or _por_smtp(assunto, corpo, para, remetente))
+    if para and (_por_resend(assunto, corpo, para, remetente)
+                 or _por_smtp(assunto, corpo, para, remetente)):
+        return True
+    motivo = "sem destinatario" if not para else "nenhum canal entregou"
+    print("[--] e-mail nao enviado (%s). O aviso seria:" % motivo)
+    print("    Para: %s" % (", ".join(para) or "(ninguem)"))
+    print("    %s" % assunto)
+    print(corpo)
+    return False
