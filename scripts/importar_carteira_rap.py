@@ -2,8 +2,12 @@
 """
 Importa a carteira ATIVA da base Raposa para o app REP Campo.
 
-"Ativo" segue a definicao do painel de gestao de carteiras: vol_12m > 0
-(cliente que comprou alguma coisa nos ultimos 12 meses).
+"Ativo" segue a definicao do painel de gestao de carteiras:
+carteira_clientes.status = 'ativo' -- "elegivel a ser cliente" (alvo comercial).
+Quem tem ramo Fornecedor / Funcionario / Consumidor Final / Empresa do Grupo /
+Fora do publico-alvo ja sai como inativo la, e por isso nao chega aqui.
+O corte e feito na consulta ao painel, NAO aqui: este script importa o que
+recebe. Prospect sem compra tambem e ativo e entra.
 
 Fonte: um JSON com a lista de clientes Raposa, no formato que o painel exporta
   [{"cod": "...", "nome": "...", "cidade": "...", "rota": "...",
@@ -57,9 +61,8 @@ def ler(caminho):
         if not cod or not nome:
             continue
         vol = num(r.get("vol_12m") or r.get("Vol 12m (R$)"))
-        if vol <= 0:                      # o painel so chama de ativo quem comprou
+        if vol <= 0:                      # prospect entra; e so para o relatorio
             sem_volume += 1
-            continue
         cidade = str(r.get("cidade") or r.get("Cidade") or "").strip()
         if sem_acento(cidade) in JA_SAO_IMPERATRIZ:
             migrados += 1
@@ -87,8 +90,8 @@ def main():
         sys.exit(1)
 
     ativos, sem_volume, migrados = ler(caminho)
-    print("[OK] ativos (vol_12m > 0): %d" % len(ativos))
-    print("     fora por nao ter compra em 12m: %d" % sem_volume)
+    print("[OK] ativos no painel (status=ativo): %d" % len(ativos))
+    print("     destes, sem compra nos 12m (prospect): %d" % sem_volume)
     print("     fora por ja serem base Imperatriz: %d" % migrados)
     if not ativos:
         print("[--] nada a importar")

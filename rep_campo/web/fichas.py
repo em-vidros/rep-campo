@@ -12,7 +12,7 @@ from rep_campo.infra import db as dbmod
 from rep_campo.infra import repositorios as repo
 from rep_campo.infra.blob import salvar_foto
 from rep_campo.infra.relogio import agora
-from rep_campo.web.acesso import eh_gestor, login_obrigatorio
+from rep_campo.web.acesso import base_do_rep, eh_gestor, login_obrigatorio
 
 bp = Blueprint("fichas", __name__)
 
@@ -21,7 +21,7 @@ bp = Blueprint("fichas", __name__)
 @login_obrigatorio
 def bootstrap():
     db = dbmod.get_db()
-    clientes = repo.clientes_bootstrap(db)
+    clientes = repo.clientes_bootstrap(db, base_do_rep())
     municipios = sorted({c["cidade"] for c in clientes if c["cidade"]} |
                         set(C.MUNICIPIOS_MIGRACAO))
     return jsonify({

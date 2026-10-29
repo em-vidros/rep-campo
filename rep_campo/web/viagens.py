@@ -11,7 +11,7 @@ from rep_campo.dominio.viagens import justificativa_valida
 from rep_campo.infra import db as dbmod
 from rep_campo.infra import repositorios as repo
 from rep_campo.infra.relogio import agora
-from rep_campo.web.acesso import eh_gestor, login_obrigatorio
+from rep_campo.web.acesso import base_do_rep, eh_gestor, login_obrigatorio
 
 bp = Blueprint("viagens", __name__)
 
@@ -28,7 +28,7 @@ def pagina():
 @bp.route("/api/rotas")
 @login_obrigatorio
 def rotas():
-    return jsonify(relatorios.montar_rotas(dbmod.get_db()))
+    return jsonify(relatorios.montar_rotas(dbmod.get_db(), base_do_rep()))
 
 
 @bp.route("/api/sugestao")
@@ -42,7 +42,8 @@ def sugestao():
         municipio=(request.args.get("municipio") or "").strip(),
         rota=(request.args.get("rota") or "").strip(),
         limite=limite,
-        so_parados=request.args.get("parados") == "1"))
+        so_parados=request.args.get("parados") == "1",
+        base=base_do_rep()))
 
 
 @bp.route("/api/viagens", methods=["GET", "POST"])

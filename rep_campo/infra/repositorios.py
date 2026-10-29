@@ -13,7 +13,7 @@ from collections import Counter
 
 def papel_ativo(db, uid):
     return db.execute(
-        "SELECT papel, ativo FROM usuarios WHERE id = %s", (uid,)
+        "SELECT papel, ativo, base FROM usuarios WHERE id = %s", (uid,)
     ).fetchone()
 
 
@@ -31,11 +31,15 @@ def senha_hash_por_uid(db, uid):
 
 # --- fichas / bootstrap / resumo ---
 
-def clientes_bootstrap(db):
-    return [dict(r) for r in db.execute(
-        "SELECT codigo, nome, cidade, curva, vol_12m, rota, vendedor "
-        "FROM clientes WHERE ativo = 1 ORDER BY nome"
-    ).fetchall()]
+def clientes_bootstrap(db, base=None):
+    """base=None devolve a carteira inteira (gestor); o REP so ve a dele."""
+    sql = ("SELECT codigo, nome, cidade, curva, vol_12m, rota, vendedor "
+           "FROM clientes WHERE ativo = 1")
+    args = []
+    if base:
+        sql += " AND base = %s"
+        args.append(base)
+    return [dict(r) for r in db.execute(sql + " ORDER BY nome", args).fetchall()]
 
 
 def ultimo_nps_por_cliente(db):
@@ -262,17 +266,23 @@ def atualizar_senha(db, uid, senha_hash):
 
 # --- viagens / rotas / sugestão ---
 
-def rotas_brutas(db):
+def rotas_brutas(db, base=None):
+    onde, args = "", []
+    if base:
+        onde, args = " AND base = %s", [base]
     return list(db.execute("""
         SELECT COALESCE(NULLIF(TRIM(rota),''),'Sem rota') AS rota,
                COALESCE(NULLIF(TRIM(cidade),''),'Sem cidade') AS cidade,
                COUNT(*) n, ROUND(SUM(vol_12m)) vol
-          FROM clientes WHERE ativo = 1
-         GROUP BY rota, cidade ORDER BY rota, n DESC"""))
+          FROM clientes WHERE ativo = 1""" + onde + """
+         GROUP BY rota, cidade ORDER BY rota, n DESC""", args))
 
 
-def sugestao_linhas(db, cidades=None, municipio=None, rota=None):
+def sugestao_linhas(db, cidades=None, municipio=None, rota=None, base=None):
     filtros, args = ["c.ativo = 1"], []
+    if base:
+        filtros.append("c.base = %s")
+        args.append(base)
     cidades = cidades or []
     if cidades:
         filtros.append("COALESCE(NULLIF(TRIM(c.cidade),''),'Sem cidade') = ANY(%s)")

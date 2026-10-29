@@ -31,7 +31,20 @@ def sessao_valida():
         session.clear()
         return False
     session["papel"] = row["papel"]
+    session["base"] = row["base"]
     return True
+
+
+def base_do_rep():
+    """A base que limita o que este usuario enxerga.
+
+    Gestor e admin acompanham as duas bases, entao nao filtram (None). O REP
+    so pode ver a carteira da base dele - sem isto o Sipiao (Itz) passaria a
+    ver cliente de Sao Luis na busca, e o Islanno veria a carteira da Itz.
+    """
+    if eh_gestor():
+        return None
+    return session.get("base") or None
 
 
 def _sem_acesso():

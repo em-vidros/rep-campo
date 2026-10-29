@@ -88,9 +88,9 @@ def montar_experiencia(db, mes=None):
 
 
 def montar_sugestao(db, cidades=None, municipio=None, rota=None,
-                    limite=40, so_parados=False):
+                    limite=40, so_parados=False, base=None):
     from datetime import datetime, timezone
-    linhas = repo.sugestao_linhas(db, cidades, municipio, rota)
+    linhas = repo.sugestao_linhas(db, cidades, municipio, rota, base)
     hoje = datetime.now(timezone.utc)
     saida = []
     for r in linhas:
@@ -140,9 +140,9 @@ def montar_sugestao(db, cidades=None, municipio=None, rota=None,
             "rotas": sorted({x["rota"] for x in saida if x["rota"]})}
 
 
-def montar_rotas(db):
+def montar_rotas(db, base=None):
     agrupadas, descartados = {}, []
-    for r in repo.rotas_brutas(db):
+    for r in repo.rotas_brutas(db, base):
         nome = r["rota"]
         if nome.lower() in ("sem rota", "sem rota "):
             nome = "Sem rota"
