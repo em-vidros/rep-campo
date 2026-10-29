@@ -34,3 +34,41 @@ def avisar(texto):
         print("[--] SEM CANAL DE ALERTA CONFIGURADO. A mensagem seria:")
         print(texto)
     return enviado
+
+
+def alertar_cadastro(dados):
+    """Avisa quem revisa cadastro que entrou uma correcao para fazer no ERP.
+
+    E uma porta injetada no caso de uso (`receber_lote`): a aplicacao monta os
+    dados, aqui vira texto e sai. Devolve True/False e NUNCA levanta - o
+    registro da visita ja esta gravado quando isto roda, e perder o alerta nao
+    pode custar a ficha do representante.
+    """
+    from rep_campo.infra import email as mod_email
+    try:
+        assunto = "[REP Campo] %s - %s em %s" % (
+            dados.get("numero") or "nova ocorrencia",
+            dados.get("o_que_mudou") or "cadastro",
+            dados.get("cliente") or "cliente")
+        linhas = [
+            "Correcao de cadastro aberta pelo representante.",
+            "",
+            "Ocorrencia: %s" % (dados.get("numero") or "-"),
+            "Cliente:    %s (cod %s)" % (dados.get("cliente") or "-",
+                                         dados.get("cliente_codigo") or "-"),
+            "Municipio:  %s" % (dados.get("municipio") or "-"),
+            "O que mudou: %s" % (dados.get("o_que_mudou") or "-"),
+            "Aberta por: %s" % (dados.get("aberta_por") or "-"),
+            "",
+            dados.get("descricao") or "",
+            "",
+            "Fila completa: https://rep-campo.vercel.app/painel (aba Ocorrencias)",
+        ]
+        if dados.get("cidade_nova"):
+            linhas.insert(7, "ATENCAO: mudou de cidade para %s - muda rota e tabela."
+                          % dados["cidade_nova"])
+        return mod_email.enviar(assunto, "\n".join(linhas),
+                                mod_email.destinatarios("ALERTA_CADASTRO_PARA"))
+    except Exception as exc:
+        print("[--] alerta de cadastro falhou: %s" % str(exc)[:160])
+        return False

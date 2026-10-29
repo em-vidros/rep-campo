@@ -267,15 +267,19 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
     return ocorrencia
 
 
-def receber_lote(db, fichas, usuario, salvar_foto=None, agora=None, logger=None):
-    """Foto e relógio injetáveis. Padrão = adapters reais, para o web não mudar."""
+def receber_lote(db, fichas, usuario, salvar_foto=None, agora=None, logger=None,
+                 avisar_cadastro=None):
+    """Foto, relógio e aviso injetáveis. Padrão = adapters reais, para o web não mudar."""
     if salvar_foto is None:
         from rep_campo.infra import blob as _blob
         salvar_foto = _blob.salvar_foto
     if agora is None:
         from rep_campo.infra.relogio import agora as _agora
         agora = _agora
-    aceitas, rejeitadas, ocorrencias = [], [], []
+    if avisar_cadastro is None:
+        from rep_campo.infra.alertas import alertar_cadastro as _alertar
+        avisar_cadastro = _alertar
+    aceitas, rejeitadas, ocorrencias, a_avisar = [], [], [], []
     for ficha in (fichas or [])[:50]:
         uuid_f = (ficha.get("uuid") or "").strip()
         tipo = (ficha.get("tipo") or "").strip()
@@ -316,6 +320,27 @@ def receber_lote(db, fichas, usuario, salvar_foto=None, agora=None, logger=None)
             continue
         if ocorrencia:
             ocorrencias.append({"uuid": uuid_f, "numero": ocorrencia})
+            if tipo == "cadastro":
+                extra = ficha.get("extra") or {}
+                a_avisar.append({
+                    "numero": ocorrencia,
+                    "cliente": cliente_nome,
+                    "cliente_codigo": ficha.get("cliente_codigo"),
+                    "municipio": ficha.get("municipio"),
+                    "o_que_mudou": ficha.get("problema_tipo"),
+                    "cidade_nova": extra.get("cidade_nova"),
+                    "aberta_por": usuario.get("nome") or usuario.get("login"),
+                    "descricao": _descricao_ocorrencia(tipo, ficha.get("relato") or "",
+                                                       extra),
+                })
         aceitas.append(uuid_f)
     db.commit()
+    # So depois do commit: a ficha ja esta salva, entao o aviso nunca custa o
+    # registro. Falha de e-mail vira log, nunca excecao para o representante.
+    for dados in a_avisar:
+        try:
+            avisar_cadastro(dados)
+        except Exception:
+            if logger is not None:
+                logger.exception("aviso de cadastro %s falhou", dados.get("numero"))
     return aceitas, rejeitadas, ocorrencias

@@ -8,6 +8,7 @@ from rep_campo.aplicacao import fichas as servico
 from rep_campo.aplicacao import recados as app_recados
 from rep_campo.dominio import catalogos as C
 from rep_campo.dominio.texto import inteiro
+from rep_campo.infra import alertas
 from rep_campo.infra import db as dbmod
 from rep_campo.infra import repositorios as repo
 from rep_campo.infra.blob import salvar_foto
@@ -67,7 +68,8 @@ def receber():
     usuario = {"uid": session["uid"], "login": session["login"]}
     aceitas, rejeitadas, ocorrencias = servico.receber_lote(
         dbmod.get_db(), payload["fichas"], usuario,
-        salvar_foto=salvar_foto, agora=agora, logger=current_app.logger)
+        salvar_foto=salvar_foto, agora=agora, logger=current_app.logger,
+        avisar_cadastro=alertas.alertar_cadastro)
     return jsonify({"aceitas": aceitas, "rejeitadas": rejeitadas,
                     "ocorrencias": ocorrencias, "recebido_em": agora()})
 
