@@ -67,8 +67,11 @@ def alertar_cadastro(dados):
         if dados.get("cidade_nova"):
             linhas.insert(7, "ATENCAO: mudou de cidade para %s - muda rota e tabela."
                           % dados["cidade_nova"])
+        from rep_campo.dominio import catalogos as C
+        responder = C.EMAIL_POR_LOGIN.get((dados.get("login") or "").lower())
         return mod_email.enviar(assunto, "\n".join(linhas),
-                                mod_email.destinatarios("ALERTA_CADASTRO_PARA"))
+                                mod_email.destinatarios("ALERTA_CADASTRO_PARA"),
+                                responder_para=responder)
     except Exception as exc:
         print("[--] alerta de cadastro falhou: %s" % str(exc)[:160])
         return False

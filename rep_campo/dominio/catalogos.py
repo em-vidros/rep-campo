@@ -33,6 +33,17 @@ SETOR_PADRAO = "Comercial"
 # ninguem. Nunca deixar em branco: ocorrencia sem dono nao e cobrada.
 RESPONSAVEL_CADASTRO = "Cadastro"
 
+# E-mail de cada login, para o alerta sair com Reply-To de quem abriu. O Gmail
+# nao deixa mandar "em nome de" outra conta, entao o From e sempre a conta
+# autenticada; o Reply-To e o que faz a recepcao responder direto ao
+# representante, em vez de responder para o remetente do sistema.
+EMAIL_POR_LOGIN = {
+    "ricardo": "ricardo@emvidros.com.br",
+    "islanno": "islanno.mesquita@emvidros.com.br",
+    "sipiao": "tiago.sipiao@emvidros.com.br",
+    "marcia": "marcia.prado@emvidros.com.br",
+}
+
 MUNICIPIOS_MIGRACAO = [
     "Santa Ines/MA", "Ze Doca/MA", "Bom Jardim/MA", "Governador Newton Belo/MA",
     "Moncao/MA", "Igarape do Meio/MA", "Pindare-Mirim/MA", "Pio XII/MA",

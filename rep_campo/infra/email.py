@@ -24,13 +24,16 @@ def destinatarios(variavel):
     return [e.strip() for e in bruto.replace(";", ",").split(",") if e.strip()]
 
 
-def _por_resend(assunto, corpo, para, remetente):
+def _por_resend(assunto, corpo, para, remetente, responder_para=None):
     chave = os.environ.get("RESEND_API_KEY")
     if not chave:
         return False
     try:
-        dados = json.dumps({"from": remetente, "to": para,
-                            "subject": assunto, "text": corpo}).encode()
+        corpo_json = {"from": remetente, "to": para,
+                      "subject": assunto, "text": corpo}
+        if responder_para:
+            corpo_json["reply_to"] = responder_para
+        dados = json.dumps(corpo_json).encode()
         req = urllib.request.Request(
             "https://api.resend.com/emails", data=dados,
             headers={"Content-Type": "application/json",
@@ -42,7 +45,7 @@ def _por_resend(assunto, corpo, para, remetente):
         return False
 
 
-def _por_smtp(assunto, corpo, para, remetente):
+def _por_smtp(assunto, corpo, para, remetente, responder_para=None):
     host = os.environ.get("SMTP_HOST")
     if not host:
         return False
@@ -54,6 +57,11 @@ def _por_smtp(assunto, corpo, para, remetente):
         msg["Subject"] = assunto
         msg["From"] = remetente
         msg["To"] = ", ".join(para)
+        # O Gmail obriga o From a ser a conta autenticada - nao da para mandar
+        # "em nome de" outra pessoa. O Reply-To resolve o que interessa: quem
+        # recebe aperta Responder e a resposta vai para o representante.
+        if responder_para:
+            msg["Reply-To"] = responder_para
         msg.set_content(corpo)
         with smtplib.SMTP(host, porta, timeout=TEMPO_LIMITE) as s:
             s.starttls()
@@ -66,15 +74,15 @@ def _por_smtp(assunto, corpo, para, remetente):
         return False
 
 
-def enviar(assunto, corpo, para):
+def enviar(assunto, corpo, para, responder_para=None):
     """Devolve True se saiu por algum caminho. Nunca levanta.
 
     Quando nao sai, o texto vai para o log: o aviso nao pode simplesmente
     sumir so porque o canal nao estava configurado ou falhou.
     """
     remetente = os.environ.get("EMAIL_REMETENTE") or "REP Campo <onboarding@resend.dev>"
-    if para and (_por_resend(assunto, corpo, para, remetente)
-                 or _por_smtp(assunto, corpo, para, remetente)):
+    if para and (_por_resend(assunto, corpo, para, remetente, responder_para)
+                 or _por_smtp(assunto, corpo, para, remetente, responder_para)):
         return True
     motivo = "sem destinatario" if not para else "nenhum canal entregou"
     print("[--] e-mail nao enviado (%s). O aviso seria:" % motivo)

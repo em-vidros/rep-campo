@@ -330,6 +330,7 @@ def receber_lote(db, fichas, usuario, salvar_foto=None, agora=None, logger=None,
                     "o_que_mudou": ficha.get("problema_tipo"),
                     "cidade_nova": extra.get("cidade_nova"),
                     "aberta_por": usuario.get("nome") or usuario.get("login"),
+                    "login": usuario.get("login"),
                     "descricao": _descricao_ocorrencia(tipo, ficha.get("relato") or "",
                                                        extra),
                 })
