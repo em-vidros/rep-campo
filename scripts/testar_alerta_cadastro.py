@@ -1,5 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Manda um alerta de cadastro de mentira, para provar o canal de e-mail.
+"""Manda um e-mail de TESTE, para provar o canal antes de depender dele.
+
+A mensagem se identifica como teste e pede para quem receber avisar o gerente
+comercial - assim a confirmacao volta por um caminho humano, sem depender de
+mais nenhum sistema.
 
 Nao toca no banco: nenhuma ficha, nenhuma ocorrencia. So monta o mesmo texto
 que o app mandaria e tenta enviar pelo canal configurado.
@@ -16,18 +20,36 @@ from rep_campo.config import carregar_env
 from rep_campo.infra import alertas, email
 
 
-EXEMPLO = {
-    "numero": "OC-TESTE-0000",
-    "cliente": "VIDRACARIA EXEMPLO LTDA",
-    "cliente_codigo": "RAP-000",
-    "municipio": "Sao Luis",
-    "o_que_mudou": "Cidade",
-    "cidade_nova": "Timon",
-    "aberta_por": "teste do sistema",
-    "descricao": ("hoje no sistema: Rua Velha, 5 - Sao Luis/MA | "
-                  "passa a ser: Av. Brasil, 100 - Centro, Timon/MA | "
-                  "cidade nova: Timon | informado por: teste"),
-}
+ASSUNTO = "[TESTE] REP Campo - alerta de correcao de cadastro"
+
+CORPO = """Esta mensagem e um TESTE. Nao e um pedido de correcao de verdade.
+
+Estamos ligando um aviso automatico: toda vez que um representante em campo
+encontrar o cadastro de um cliente desatualizado (endereco, cidade, telefone,
+contato ou razao social), vai chegar neste e-mail uma mensagem como esta, com
+o numero da ocorrencia, o cliente e o dado novo.
+
+PEDIMOS O SEGUINTE: se voce recebeu este e-mail, por favor AVISE O GERENTE
+COMERCIAL RICARDO que a mensagem chegou. E so isso - e para confirmarmos que
+o caminho esta funcionando.
+
+Obrigado.
+
+--
+Um alerta de verdade chega assim:
+
+Ocorrencia:  OC-2026-0005
+Cliente:     VIDRACARIA EXEMPLO LTDA (cod RAP-000)
+Municipio:   Sao Luis
+O que mudou: Cidade
+Aberta por:  Islanno (representante)
+ATENCAO: mudou de cidade para Timon - muda rota e tabela.
+
+hoje no sistema: Rua Velha, 5 - Sao Luis/MA
+passa a ser:    Av. Brasil, 100 - Centro, Timon/MA
+
+Fila completa: https://rep-campo.vercel.app/painel (aba Ocorrencias)
+"""
 
 
 def main():
@@ -45,8 +67,8 @@ def main():
     if canal == "NENHUM" or not para:
         print("\n[--] falta configuracao. Abaixo vai o texto que seria enviado.\n")
 
-    ok = alertas.alertar_cadastro(EXEMPLO)
-    print("\n[%s] alertar_cadastro devolveu %s" % ("OK" if ok else "--", ok))
+    ok = email.enviar(ASSUNTO, CORPO, para)
+    print("\n[%s] envio devolveu %s" % ("OK" if ok else "--", ok))
     if ok:
         print("     Confira a caixa de entrada (e o spam) de: %s" % ", ".join(para))
     sys.exit(0 if ok else 1)
