@@ -202,3 +202,21 @@ def test_ordenar_cobertura_nunca_visitado_primeiro():
     ordenar_cobertura(itens)
     assert itens[0]["dias"] is None
     assert itens[1]["dias"] == 200
+
+
+def test_toda_visita_do_catalogo_tem_botao_na_tela():
+    """O catalogo aceitava um tipo que a tela nao oferecia.
+
+    Aconteceu em 30/10: a ficha de cadastro entrou no catalogo e no servidor,
+    mas os botoes do index.html sao escritos a mao - o representante abria o
+    app e o tipo novo simplesmente nao existia.
+    """
+    import re
+    from rep_campo.dominio import catalogos as C
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(raiz, "templates", "index.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    na_tela = set(re.findall(r'data-tipo="([a-z]+)"', html))
+    assert set(C.TIPOS) == na_tela, (
+        "catalogo e tela divergem - so no catalogo: %s | so na tela: %s"
+        % (sorted(set(C.TIPOS) - na_tela), sorted(na_tela - set(C.TIPOS))))
