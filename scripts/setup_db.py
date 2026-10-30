@@ -106,6 +106,13 @@ TABELAS = [
             criado_em TEXT NOT NULL
         )"""),
     ("ocorrencias", """
+        CREATE TABLE IF NOT EXISTS config_email (
+            chave TEXT PRIMARY KEY,
+            valor TEXT NOT NULL,
+            atualizado_em TEXT
+        )
+    """)
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS ocorrencias (
             numero TEXT PRIMARY KEY,
             aberta_em TEXT NOT NULL,

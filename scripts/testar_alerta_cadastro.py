@@ -58,12 +58,13 @@ def main():
         os.environ["ALERTA_CADASTRO_PARA"] = sys.argv[1]
 
     para = email.destinatarios("ALERTA_CADASTRO_PARA")
-    canal = ("Resend" if os.environ.get("RESEND_API_KEY")
-             else "SMTP %s" % os.environ.get("SMTP_HOST") if os.environ.get("SMTP_HOST")
+    canal = ("Resend" if email.conf("RESEND_API_KEY")
+             else "SMTP %s" % email.conf("SMTP_HOST") if email.conf("SMTP_HOST")
              else "NENHUM")
-    print("[i] canal configurado: %s" % canal)
+    origem = "ambiente" if os.environ.get("SMTP_HOST") else "banco (config_email)"
+    print("[i] canal configurado: %s  [vindo do %s]" % (canal, origem))
     print("[i] destinatarios....: %s" % (", ".join(para) or "(nenhum)"))
-    print("[i] remetente........: %s" % (os.environ.get("EMAIL_REMETENTE") or "(padrao)"))
+    print("[i] remetente........: %s" % (email.conf("EMAIL_REMETENTE") or "(padrao)"))
     if canal == "NENHUM" or not para:
         print("\n[--] falta configuracao. Abaixo vai o texto que seria enviado.\n")
 

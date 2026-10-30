@@ -17,15 +17,46 @@ from email.message import EmailMessage
 
 TEMPO_LIMITE = 8
 
+# Lido uma vez por instancia. A Vercel recria o processo a cada deploy, entao
+# mudar a configuracao no banco vale a partir do proximo deploy ou da proxima
+# instancia fria - e aceitavel para algo que muda uma vez por ano.
+_DO_BANCO = None
+
+
+def _config_do_banco():
+    """A configuracao de e-mail tambem pode morar no banco.
+
+    A alternativa seria so variavel de ambiente, que exige entrar no painel da
+    hospedagem. Como a DATABASE_URL ja esta la, quem le as variaveis ja alcanca
+    o banco de qualquer forma - guardar aqui nao abre porta nova.
+    """
+    global _DO_BANCO
+    if _DO_BANCO is not None:
+        return _DO_BANCO
+    try:
+        from rep_campo.infra.db import conectar
+        with conectar() as con:
+            _DO_BANCO = {r["chave"]: r["valor"] for r in
+                         con.execute("SELECT chave, valor FROM config_email")}
+    except Exception as exc:
+        print("[--] config_email indisponivel: %s" % str(exc)[:120])
+        _DO_BANCO = {}
+    return _DO_BANCO
+
+
+def conf(nome):
+    """Ambiente primeiro, banco depois. Nunca devolve None."""
+    return (os.environ.get(nome) or _config_do_banco().get(nome) or "").strip()
+
 
 def destinatarios(variavel):
-    """Lista separada por virgula na variavel de ambiente."""
-    bruto = os.environ.get(variavel) or ""
+    """Lista separada por virgula, do ambiente ou do banco."""
+    bruto = conf(variavel)
     return [e.strip() for e in bruto.replace(";", ",").split(",") if e.strip()]
 
 
 def _por_resend(assunto, corpo, para, remetente, responder_para=None):
-    chave = os.environ.get("RESEND_API_KEY")
+    chave = conf("RESEND_API_KEY")
     if not chave:
         return False
     try:
@@ -46,12 +77,12 @@ def _por_resend(assunto, corpo, para, remetente, responder_para=None):
 
 
 def _por_smtp(assunto, corpo, para, remetente, responder_para=None):
-    host = os.environ.get("SMTP_HOST")
+    host = conf("SMTP_HOST")
     if not host:
         return False
-    porta = int(os.environ.get("SMTP_PORT") or 587)
-    usuario = os.environ.get("SMTP_USUARIO") or ""
-    senha = os.environ.get("SMTP_SENHA") or ""
+    porta = int(conf("SMTP_PORT") or 587)
+    usuario = conf("SMTP_USUARIO")
+    senha = conf("SMTP_SENHA")
     try:
         msg = EmailMessage()
         msg["Subject"] = assunto
@@ -80,7 +111,7 @@ def enviar(assunto, corpo, para, responder_para=None):
     Quando nao sai, o texto vai para o log: o aviso nao pode simplesmente
     sumir so porque o canal nao estava configurado ou falhou.
     """
-    remetente = os.environ.get("EMAIL_REMETENTE") or "REP Campo <onboarding@resend.dev>"
+    remetente = conf("EMAIL_REMETENTE") or "REP Campo <onboarding@resend.dev>"
     if para and (_por_resend(assunto, corpo, para, remetente, responder_para)
                  or _por_smtp(assunto, corpo, para, remetente, responder_para)):
         return True
