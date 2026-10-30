@@ -102,6 +102,11 @@ CANAL_PADRAO = "presencial"
 # No telefone o relato e mais curto por natureza: o contato tambem e.
 RELATO_MIN_TELEFONE = 20
 
+# Na ficha de cadastro o conteudo esta nos campos (o que mudou, o dado novo).
+# O relato e so o contexto - "confirmei no local com o dono" ja basta, e exigir
+# 40 caracteres so faz o representante encher linguica para o botao liberar.
+RELATO_MIN_CADASTRO = 15
+
 # Visita de relacionamento nem sempre deixa pendencia. Obrigar um proximo passo
 # aqui so produzia texto de fachada ("manter contato") com data do proprio dia.
 # Nesses tipos ele escreve o passo real OU declara que nao ficou nada pendente.

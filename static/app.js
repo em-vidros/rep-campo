@@ -101,8 +101,12 @@ function ajustarPorCanal() {
   if (cont) cont.dataset.min = relatoMinimo();
 }
 
-const relatoMinimo = () => canalAtual === 'telefone'
-  ? (CFG.relato_min_telefone || 20) : (CFG.relato_obrigatorio_min || 40);
+const relatoMinimo = () => {
+  // na ficha de cadastro o que vale esta nos campos, nao no relato
+  if (tipoAtual === 'cadastro') return (CFG.relato_min_cadastro || 15);
+  if (canalAtual === 'telefone') return (CFG.relato_min_telefone || 20);
+  return (CFG.relato_obrigatorio_min || 40);
+};
 
 /* O bloco do proximo passo muda de cara conforme o tipo da visita. */
 function ajustarBlocoPasso(tipo) {

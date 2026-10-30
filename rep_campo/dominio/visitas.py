@@ -30,10 +30,14 @@ def canal_valido(valor):
     return v if v in CANAIS_VALIDOS else CANAL_PADRAO
 
 
-def relato_minimo(canal):
-    """Telefone pede menos texto; o resto segue a regra cheia."""
-    from .catalogos import RELATO_OBRIGATORIO_MIN
-    return RELATO_MIN_TELEFONE if canal == "telefone" else RELATO_OBRIGATORIO_MIN
+def relato_minimo(canal, tipo=None):
+    """Telefone e cadastro pedem menos texto; o resto segue a regra cheia."""
+    from .catalogos import RELATO_MIN_CADASTRO, RELATO_OBRIGATORIO_MIN
+    if tipo == "cadastro":
+        return RELATO_MIN_CADASTRO
+    if canal == "telefone":
+        return RELATO_MIN_TELEFONE
+    return RELATO_OBRIGATORIO_MIN
 
 
 def validar_nota(valor):

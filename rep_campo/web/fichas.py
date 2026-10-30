@@ -52,6 +52,7 @@ def bootstrap():
         "canais_visita": C.CANAIS_VISITA,
         "canais_remotos": list(C.CANAIS_REMOTOS),
         "relato_min_telefone": C.RELATO_MIN_TELEFONE,
+        "relato_min_cadastro": C.RELATO_MIN_CADASTRO,
         "etapas_jornada": C.ETAPAS_JORNADA,
         "metrica_por_etapa": C.METRICA_POR_ETAPA,
         "dias_minimos_nps": C.DIAS_MINIMOS_ENTRE_NPS,
