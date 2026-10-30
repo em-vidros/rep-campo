@@ -78,6 +78,24 @@ def saude_rede():
         saida["resend_443"] = "abre"
     except Exception as exc:
         saida["resend_443"] = "%s: %s" % (type(exc).__name__, str(exc)[:80])
+
+    # a configuracao chegou ate aqui? (sem mostrar a senha)
+    saida["config"] = {k: ("definido (%d car.)" % len(mod_email.conf(k))
+                           if k == "SMTP_SENHA" else mod_email.conf(k) or "VAZIO")
+                       for k in ("SMTP_HOST", "SMTP_PORT", "SMTP_USUARIO",
+                                 "SMTP_SENHA", "EMAIL_REMETENTE",
+                                 "ALERTA_CADASTRO_PARA")}
+
+    # autentica e desliga, sem mandar mensagem nenhuma
+    import smtplib
+    try:
+        with smtplib.SMTP(host, int(mod_email.conf("SMTP_PORT") or 587),
+                          timeout=10) as sm:
+            sm.starttls()
+            sm.login(mod_email.conf("SMTP_USUARIO"), mod_email.conf("SMTP_SENHA"))
+        saida["login_smtp"] = "aceito"
+    except Exception as exc:
+        saida["login_smtp"] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
     return jsonify(saida), 200, {"Cache-Control": "no-store"}
 
 
