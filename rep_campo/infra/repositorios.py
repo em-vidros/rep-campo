@@ -33,8 +33,8 @@ def senha_hash_por_uid(db, uid):
 
 def clientes_bootstrap(db, base=None):
     """base=None devolve a carteira inteira (gestor); o REP so ve a dele."""
-    sql = ("SELECT codigo, nome, cidade, curva, vol_12m, rota, vendedor "
-           "FROM clientes WHERE ativo = 1")
+    sql = ("SELECT codigo, nome, cidade, curva, vol_12m, rota, vendedor, "
+           "endereco, telefone FROM clientes WHERE ativo = 1")
     args = []
     if base:
         sql += " AND base = %s"

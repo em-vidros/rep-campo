@@ -220,3 +220,44 @@ def test_toda_visita_do_catalogo_tem_botao_na_tela():
     assert set(C.TIPOS) == na_tela, (
         "catalogo e tela divergem - so no catalogo: %s | so na tela: %s"
         % (sorted(set(C.TIPOS) - na_tela), sorted(na_tela - set(C.TIPOS))))
+
+
+def test_campos_da_ficha_de_cadastro_batem_com_a_tela():
+    """Catalogo e app.js tem de usar exatamente os mesmos ids de campo.
+
+    CAMPO_POR_MUDANCA diz "o item Endereco preenche o campo endereco_novo".
+    Se o app.js chamar esse campo de outro jeito, o item aparece marcado e o
+    valor digitado nunca chega na ocorrencia - sem erro nenhum na tela.
+    """
+    import re
+    from rep_campo.dominio import catalogos as C
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(raiz, "static", "app.js"), encoding="utf-8") as fh:
+        js = fh.read()
+    bloco = js[js.index("  cadastro: ["):]
+    bloco = bloco[:bloco.index("\n  ],")]
+    ids_na_tela = set(re.findall(r"id: '([a-z_]+)'", bloco))
+
+    esperados = set(C.CAMPO_POR_MUDANCA.values())
+    faltando = esperados - ids_na_tela
+    assert not faltando, "itens sem campo no app.js: %s" % sorted(faltando)
+
+    # todo item da lista fechada precisa de um campo, menos o do cliente sumido,
+    # que nao e um dado a corrigir e sim uma busca
+    sem_campo = set(C.MUDANCAS_CADASTRO) - set(C.CAMPO_POR_MUDANCA) - {C.MUDANCA_SUMIU}
+    assert not sem_campo, "itens sem campo definido no catalogo: %s" % sorted(sem_campo)
+
+    for chave in ("mudanca_sumiu", "desfechos_sumiu", "campo_por_mudanca"):
+        assert "CFG." + chave in js, "app.js nao usa CFG.%s" % chave
+
+
+def test_bootstrap_entrega_o_que_a_tela_pede():
+    """O que o app.js le de CFG tem de sair do bootstrap."""
+    import re
+    raiz = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(raiz, "static", "app.js"), encoding="utf-8") as fh:
+        pedidos = set(re.findall(r"CFG\.([a-z_]+)", fh.read()))
+    with open(os.path.join(raiz, "rep_campo", "web", "fichas.py"), encoding="utf-8") as fh:
+        entregues = set(re.findall(r'"([a-z_]+)":', fh.read()))
+    faltando = {p for p in pedidos if p not in entregues}
+    assert not faltando, "app.js pede do CFG e o bootstrap nao manda: %s" % sorted(faltando)

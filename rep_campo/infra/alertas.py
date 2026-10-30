@@ -46,10 +46,15 @@ def alertar_cadastro(dados):
     """
     from rep_campo.infra import email as mod_email
     try:
-        assunto = "[REP Campo] %s - %s em %s" % (
-            dados.get("numero") or "nova ocorrencia",
-            dados.get("o_que_mudou") or "cadastro",
-            dados.get("cliente") or "cliente")
+        if dados.get("sumiu"):
+            assunto = "[REP Campo] %s - CLIENTE NAO ESTA MAIS NO ENDERECO - %s" % (
+                dados.get("numero") or "nova ocorrencia",
+                dados.get("cliente") or "cliente")
+        else:
+            assunto = "[REP Campo] %s - %s em %s" % (
+                dados.get("numero") or "nova ocorrencia",
+                dados.get("o_que_mudou") or "cadastro",
+                dados.get("cliente") or "cliente")
         linhas = [
             "Correcao de cadastro aberta pelo representante.",
             "",
@@ -67,6 +72,9 @@ def alertar_cadastro(dados):
         if dados.get("cidade_nova"):
             linhas.insert(7, "ATENCAO: mudou de cidade para %s - muda rota e tabela."
                           % dados["cidade_nova"])
+        if dados.get("pendente_com_o_rep"):
+            linhas.insert(7, "NAO CORRIJA AINDA: o representante foi procurar o "
+                             "endereco novo e vai retornar com o desfecho.")
         from rep_campo.dominio import catalogos as C
         responder = C.EMAIL_POR_LOGIN.get((dados.get("login") or "").lower())
         return mod_email.enviar(assunto, "\n".join(linhas),

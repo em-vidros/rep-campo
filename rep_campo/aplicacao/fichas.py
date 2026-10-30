@@ -14,6 +14,23 @@ from rep_campo.dominio.ocorrencias import numero_formatado
 from rep_campo.dominio.texto import RE_UUID, num_float, texto_limitado
 
 
+def mudancas_marcadas(extra):
+    """Os itens que o representante marcou. Aceita lista ou texto separado."""
+    bruto = extra.get("mudancas")
+    if isinstance(bruto, list):
+        itens = bruto
+    else:
+        itens = str(bruto or "").split(",")
+    return [str(x).strip() for x in itens if str(x).strip()]
+
+
+def busca_pendente(extra):
+    """True quando o cliente sumiu do endereco e a busca ficou com o REP."""
+    if C.MUDANCA_SUMIU not in mudancas_marcadas(extra):
+        return False
+    return str(extra.get("desfecho") or "").strip() == C.DESFECHO_PENDENTE
+
+
 def _descricao_ocorrencia(tipo, relato, extra):
     """O que quem vai corrigir le na fila.
 
@@ -23,14 +40,35 @@ def _descricao_ocorrencia(tipo, relato, extra):
     """
     if tipo != "cadastro":
         return relato
-    rotulos = [("dado_antigo", "hoje no sistema"), ("dado_novo", "passa a ser"),
-               ("cidade_nova", "cidade nova"), ("quem_informou", "informado por")]
-    partes = []
-    for chave, rotulo in rotulos:
+    linhas = []
+    marcadas = mudancas_marcadas(extra)
+
+    if C.MUDANCA_SUMIU in marcadas:
+        desfecho = str(extra.get("desfecho") or "").strip()
+        linhas.append("*** CLIENTE NAO ESTA MAIS NESTE ENDERECO ***")
+        if desfecho:
+            linhas.append("Desfecho: %s" % desfecho)
+        if desfecho == C.DESFECHO_PENDENTE:
+            linhas.append("A busca do endereco novo ficou com o representante. "
+                          "Nao corrija nada ainda - aguarde o retorno dele.")
+
+    atual = str(extra.get("cadastro_atual") or "").strip()
+    if atual:
+        linhas.append("Hoje no sistema: %s" % atual)
+
+    for item in marcadas:
+        chave = C.CAMPO_POR_MUDANCA.get(item)
+        if not chave:
+            continue
         valor = str(extra.get(chave) or "").strip()
         if valor:
-            partes.append("%s: %s" % (rotulo, valor))
-    cabecalho = " | ".join(partes)
+            linhas.append("%s -> %s" % (item, valor))
+
+    quem = str(extra.get("quem_informou") or "").strip()
+    if quem:
+        linhas.append("Informado por: %s" % quem)
+
+    cabecalho = "\n".join(linhas)
     return (cabecalho + "\n\n" + relato) if cabecalho else relato
 
 
@@ -132,6 +170,14 @@ def _gravar_ficha(db, ficha, uuid_f, tipo, cliente_nome, usuario, foto_arq,
         ficha.get("lat") is not None and ficha.get("lon") is not None,
         bool((ficha.get("proximo_passo") or "").strip()),
         canal=canal, relato=relato)
+    if tipo == "cadastro":
+        # a tela manda a lista marcada; a coluna guarda o texto que o gestor le
+        marcadas = mudancas_marcadas(ficha.get("extra") or {})
+        if marcadas:
+            ficha = dict(ficha, problema_tipo=", ".join(marcadas))
+        # busca em aberto nunca e visita sem pendencia: ela e a pendencia
+        if busca_pendente(ficha.get("extra") or {}):
+            ficha = dict(ficha, sem_pendencia=0)
     etapa = texto_limitado(ficha, "exp_etapa", C.LIMITES_TEXTO)
     metrica = metrica_para_etapa(etapa) if etapa else None
     nota = validar_nota(ficha.get("exp_nota"))
@@ -329,6 +375,9 @@ def receber_lote(db, fichas, usuario, salvar_foto=None, agora=None, logger=None,
                     "municipio": ficha.get("municipio"),
                     "o_que_mudou": ficha.get("problema_tipo"),
                     "cidade_nova": extra.get("cidade_nova"),
+                    "sumiu": C.MUDANCA_SUMIU in mudancas_marcadas(extra),
+                    "desfecho": extra.get("desfecho"),
+                    "pendente_com_o_rep": busca_pendente(extra),
                     "aberta_por": usuario.get("nome") or usuario.get("login"),
                     "login": usuario.get("login"),
                     "descricao": _descricao_ocorrencia(tipo, ficha.get("relato") or "",

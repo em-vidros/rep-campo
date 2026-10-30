@@ -17,8 +17,36 @@ TIPOS = {
 # relatorio, e ninguem conseguiria contar quantas correcoes de endereco houve.
 MUDANCAS_CADASTRO = [
     "Endereco", "Cidade", "Telefone", "Contato / responsavel",
-    "Razao social ou CNPJ", "Ponto de referencia", "Outro",
+    "Razao social ou CNPJ", "Ponto de referencia",
+    "Cliente nao esta mais neste endereco", "Outro",
 ]
+
+# O caso que nao e so cadastro errado: o representante foi ate la e o cliente
+# nao esta mais. Vira uma busca, com dono e desfecho - nao um dado a corrigir.
+MUDANCA_SUMIU = "Cliente nao esta mais neste endereco"
+
+DESFECHOS_SUMIU = [
+    "Vou procurar o endereco novo",
+    "Encontrei o endereco novo",
+    "Nao localizei - mudou de ramo",
+    "Nao localizei - empresa fechou",
+    "Nao localizei - titular faleceu",
+    "Nao localizei - outro motivo",
+]
+
+# Enquanto a busca nao termina, a pendencia e do representante.
+DESFECHO_PENDENTE = "Vou procurar o endereco novo"
+
+# Campo da ficha por item marcado. A chave e o item da lista acima.
+CAMPO_POR_MUDANCA = {
+    "Endereco": "endereco_novo",
+    "Cidade": "cidade_nova",
+    "Telefone": "telefone_novo",
+    "Contato / responsavel": "contato_novo",
+    "Razao social ou CNPJ": "razao_nova",
+    "Ponto de referencia": "referencia_nova",
+    "Outro": "outro_novo",
+}
 
 # Tipos de ficha que abrem ocorrencia: ganham numero, responsavel, prazo e
 # status. Sem isto a informacao fica so no relato e depende de alguem ler.

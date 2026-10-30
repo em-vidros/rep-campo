@@ -187,16 +187,62 @@ const CAMPOS = {
     { id: 'leitura', rot: 'Leitura do evento', tipo: 'textarea' },
   ],
   cadastro: [
-    { id: 'problema_tipo', rot: 'O que mudou *', tipo: 'mudancas' },
-    { id: 'dado_novo', rot: 'Como fica agora *', tipo: 'textarea',
-      ph: 'escreva completo: rua, numero, bairro, cidade' },
-    { id: 'cidade_nova', rot: 'Cidade nova (so se mudou de cidade)', tipo: 'text',
-      ph: 'muda a rota e a tabela - nao deixe em branco se mudou' },
-    { id: 'dado_antigo', rot: 'Como esta hoje no sistema', tipo: 'text' },
+    { id: 'mudancas', rot: 'O que mudou * (marque tudo que se aplica)', tipo: 'mudancas_multi' },
+    { id: 'desfecho', rot: 'E agora? *', tipo: 'select', ops: [] },
+    { id: 'endereco_novo', rot: 'Endereco novo', tipo: 'textarea',
+      ph: 'completo: rua, numero, bairro, cidade' },
+    { id: 'cidade_nova', rot: 'Cidade nova', tipo: 'text',
+      ph: 'muda a rota e a tabela de preco' },
+    { id: 'telefone_novo', rot: 'Telefone novo', tipo: 'text', ph: '(98) 90000-0000' },
+    { id: 'contato_novo', rot: 'Contato novo (nome e cargo)', tipo: 'text' },
+    { id: 'razao_nova', rot: 'Razao social ou CNPJ novo', tipo: 'text' },
+    { id: 'referencia_nova', rot: 'Ponto de referencia', tipo: 'text' },
+    { id: 'outro_novo', rot: 'O que mudou (descreva)', tipo: 'text' },
     { id: 'quem_informou', rot: 'Quem informou (nome e cargo)', tipo: 'text' },
   ],
 };
 const FOTO_OBRIGATORIA = ['tecnica', 'prospeccao', 'preco', 'evento'];
+
+/* ------------------------------------------- ficha de atualizacao de cadastro
+   Mostrar os nove campos de uma vez seria um formulario que ninguem preenche
+   em pe na calcada. Aparece so o campo do que o representante marcou. */
+function marcadasCadastro() {
+  return [...document.querySelectorAll('[data-mudanca]')]
+    .filter(c => c.checked).map(c => c.dataset.mudanca);
+}
+
+function ajustarCadastro() {
+  const marcadas = marcadasCadastro();
+  const sumiu = marcadas.includes(CFG.mudanca_sumiu);
+  const mapa = CFG.campo_por_mudanca || {};
+  const desfecho = (($('x-desfecho') || {}).value || '');
+  // quando o cliente sumiu, o endereco novo so faz sentido se ele ja achou
+  const achou = desfecho === 'Encontrei o endereco novo';
+
+  Object.keys(mapa).forEach(item => {
+    const wrap = $('wrap-x-' + mapa[item]);
+    if (wrap) wrap.classList.toggle('oculto', !marcadas.includes(item));
+  });
+  const wrapDesf = $('wrap-x-desfecho');
+  if (wrapDesf) wrapDesf.classList.toggle('oculto', !sumiu);
+  if (sumiu) {
+    const wrapEnd = $('wrap-x-endereco_novo');
+    if (wrapEnd) wrapEnd.classList.toggle('oculto', !achou);
+  }
+}
+
+function prepararCadastro() {
+  const sel = $('x-desfecho');
+  if (sel) {
+    sel.innerHTML = '<option value=""></option>' +
+      (CFG.desfechos_sumiu || []).map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+    sel.onchange = ajustarCadastro;
+  }
+  document.querySelectorAll('[data-mudanca]').forEach(c => {
+    c.onchange = ajustarCadastro;
+  });
+  ajustarCadastro();
+}
 
 function montarCampos(tipo) {
   const box = $('campos-tipo');
@@ -217,10 +263,16 @@ function montarCampos(tipo) {
       el = document.createElement('select');
       el.innerHTML = '<option value=""></option>' +
         (CFG.concorrentes || []).map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
-    } else if (c.tipo === 'mudancas') {
-      el = document.createElement('select');
-      el.innerHTML = '<option value=""></option>' +
-        (CFG.mudancas_cadastro || []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
+    } else if (c.tipo === 'mudancas_multi') {
+      // caixinhas, nao lista: numa visita so o cliente pode ter mudado de
+      // endereco E de telefone, e obrigar a abrir duas fichas seria burrice
+      el = document.createElement('div');
+      el.className = 'grupo-caixas';
+      el.innerHTML = (CFG.mudancas_cadastro || []).map((m, i) => `
+        <label class="caixa-item${m === CFG.mudanca_sumiu ? ' caixa-alerta' : ''}">
+          <input type="checkbox" data-mudanca="${esc(m)}" id="mud-${i}">
+          <span>${esc(m)}</span>
+        </label>`).join('');
     } else if (c.tipo === 'problemas') {
       el = document.createElement('select');
       el.innerHTML = '<option value=""></option>' +
@@ -251,9 +303,11 @@ function montarCampos(tipo) {
       if (c.tipo === 'number') el.inputMode = 'decimal';
     }
     el.id = 'x-' + c.id;
+    wrap.id = 'wrap-x-' + c.id;
     wrap.appendChild(el);
     box.appendChild(wrap);
   });
+  if (tipo === 'cadastro') prepararCadastro();
   const btn = $('btn-mais-item');
   if (btn) btn.onclick = () => {
     const d = document.createElement('div');
@@ -535,10 +589,20 @@ function lerCampos(tipo) {
       })).filter(x => x.item && x.preco);
       const linhas = fixos.concat(livres);
       if (linhas.length) extra[c.id] = linhas;
-    } else if (el.value && el.value.trim()) {
+    } else if (c.tipo === 'mudancas_multi') {
+      const marcadas = marcadasCadastro();
+      if (marcadas.length) extra[c.id] = marcadas;
+    } else if (el.value && el.value.trim() && !el.closest('.oculto')) {
       extra[c.id] = el.value.trim();
     }
   });
+  if (tipo === 'cadastro' && clienteEscolhido) {
+    // o que o sistema tem hoje viaja junto: quem corrige precisa comparar
+    const partes = [];
+    if (clienteEscolhido.endereco) partes.push(clienteEscolhido.endereco);
+    if (clienteEscolhido.telefone) partes.push('tel ' + clienteEscolhido.telefone);
+    if (partes.length) extra.cadastro_atual = partes.join(' | ');
+  }
   return extra;
 }
 
@@ -625,14 +689,22 @@ $('form-ficha').addEventListener('submit', async ev => {
       erros.push('Descreva a ocorrência no campo "Qual?".');
   }
   if (tipoAtual === 'cadastro') {
-    const oque = (document.getElementById('x-problema_tipo') || {}).value;
-    const novo = (document.getElementById('x-dado_novo') || {}).value || '';
-    const cidade = (document.getElementById('x-cidade_nova') || {}).value || '';
-    if (!oque) erros.push('Escolha o que mudou.');
+    const marcadas = marcadasCadastro();
+    const sumiu = marcadas.includes(CFG.mudanca_sumiu);
+    const desfecho = (($('x-desfecho') || {}).value || '').trim();
+    const mapa = CFG.campo_por_mudanca || {};
+    if (!marcadas.length) erros.push('Marque o que mudou no cadastro.');
+    if (sumiu && !desfecho)
+      erros.push('Diga o que vai acontecer agora: você vai procurar, achou, ou não localizou.');
     // sem o dado novo a ocorrência não serve para ninguém corrigir nada
-    if (!novo.trim()) erros.push('Escreva como fica agora o dado correto.');
-    if (oque === 'Cidade' && !cidade.trim())
-      erros.push('Preencha a cidade nova - é ela que muda a rota.');
+    marcadas.forEach(item => {
+      const campo = mapa[item];
+      if (!campo) return;
+      if (sumiu && campo === 'endereco_novo' && desfecho !== 'Encontrei o endereco novo') return;
+      const el = $('x-' + campo);
+      if (el && !(el.value || '').trim())
+        erros.push('Preencha o novo valor de "' + item + '".');
+    });
   }
 
   const caixa = $('erros-form');
@@ -908,7 +980,9 @@ function desenharCliente(c) {
       <div class="cc-linha"><span>Rota</span><b>${esc(c.rota || '-')}</b></div>
       <div class="cc-linha"><span>Vendedor</span><b>${esc(c.vendedor || '-')}</b></div>
       <div class="cc-linha"><span>Curva</span><b>${c.curva ? 'classe ' + esc(c.curva) : 'sem classificacao'}</b></div>
-      <div class="cc-linha"><span>Comprou 12m</span><b>${brl(c.vol_12m)}</b></div>`
+      <div class="cc-linha"><span>Comprou 12m</span><b>${brl(c.vol_12m)}</b></div>
+      <div class="cc-linha"><span>Endereco</span><b>${esc(c.endereco || 'sem endereco cadastrado')}</b></div>
+      <div class="cc-linha"><span>Telefone</span><b>${esc(c.telefone || 'sem telefone cadastrado')}</b></div>`
       + blocoMissoes(c.codigo);
     cartao.classList.remove('oculto');
     if (c.cidade && !$('f-municipio').value) $('f-municipio').value = c.cidade;

@@ -360,3 +360,14 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .bloco-ficha .cc-linha{display:flex;justify-content:space-between;gap:10px;
   padding:3px 0;font-size:.9rem;border-bottom:1px solid #f2f0ec}
 .ficha-foto{width:100%;border-radius:10px;margin-top:4px}
+
+/* caixinhas do "o que mudou" na ficha de cadastro */
+.grupo-caixas{display:flex;flex-direction:column;gap:2px;margin-top:4px}
+.caixa-item{display:flex;align-items:center;gap:10px;padding:11px 12px;
+  border:1px solid #d8d5cc;border-radius:9px;background:#fff;cursor:pointer;
+  font-weight:400;margin:0}
+.caixa-item input{width:20px;height:20px;flex:none;margin:0}
+.caixa-item span{flex:1}
+.caixa-item:has(input:checked){border-color:#1b6b4f;background:#f2f8f5}
+.caixa-item.caixa-alerta{border-color:#e0b878;background:#fdf6ea;margin-top:6px}
+.caixa-item.caixa-alerta:has(input:checked){border-color:#a86a00;background:#fbecd2}
