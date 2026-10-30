@@ -36,6 +36,26 @@ def avisar(texto):
     return enviado
 
 
+def _registrar(ocorrencia, para, ok, erro):
+    """Guarda no banco se o aviso saiu. Falha de e-mail era invisivel: virava
+    um print no log da hospedagem, que eu nao alcanco."""
+    from datetime import datetime, timezone
+    try:
+        from rep_campo.infra.db import conectar
+        with conectar() as con:
+            con.execute("""CREATE TABLE IF NOT EXISTS alertas_log (
+                id SERIAL PRIMARY KEY, quando TEXT, ocorrencia TEXT,
+                destino TEXT, ok INTEGER, erro TEXT)""")
+            con.execute("""INSERT INTO alertas_log
+                (quando, ocorrencia, destino, ok, erro) VALUES (%s,%s,%s,%s,%s)""",
+                (datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                 ocorrencia, ", ".join(para or []), 1 if ok else 0,
+                 (erro or "")[:400]))
+            con.commit()
+    except Exception as exc:
+        print("[--] nao consegui registrar o alerta: %s" % str(exc)[:120])
+
+
 def alertar_cadastro(dados):
     """Avisa quem revisa cadastro que entrou uma correcao para fazer no ERP.
 
@@ -77,9 +97,12 @@ def alertar_cadastro(dados):
                              "endereco novo e vai retornar com o desfecho.")
         from rep_campo.dominio import catalogos as C
         responder = C.EMAIL_POR_LOGIN.get((dados.get("login") or "").lower())
-        return mod_email.enviar(assunto, "\n".join(linhas),
-                                mod_email.destinatarios("ALERTA_CADASTRO_PARA"),
-                                responder_para=responder)
+        para = mod_email.destinatarios("ALERTA_CADASTRO_PARA")
+        mod_email.ULTIMO_ERRO = ""
+        ok = mod_email.enviar(assunto, "\n".join(linhas), para,
+                              responder_para=responder)
+        _registrar(dados.get("numero"), para, ok, mod_email.ULTIMO_ERRO)
+        return ok
     except Exception as exc:
         print("[--] alerta de cadastro falhou: %s" % str(exc)[:160])
         return False

@@ -22,6 +22,10 @@ TEMPO_LIMITE = 8
 # instancia fria - e aceitavel para algo que muda uma vez por ano.
 _DO_BANCO = None
 
+# Por que o ultimo envio falhou. Fica aqui para o alerta conseguir gravar o
+# motivo no banco - sem isto, falha de e-mail vira um print que ninguem le.
+ULTIMO_ERRO = ""
+
 
 def _config_do_banco():
     """A configuracao de e-mail tambem pode morar no banco.
@@ -72,7 +76,9 @@ def _por_resend(assunto, corpo, para, remetente, responder_para=None):
         urllib.request.urlopen(req, timeout=TEMPO_LIMITE).read()
         return True
     except Exception as exc:
-        print("[--] Resend falhou: %s" % str(exc)[:160])
+        global ULTIMO_ERRO
+        ULTIMO_ERRO = "Resend: %s" % str(exc)[:200]
+        print("[--] %s" % ULTIMO_ERRO)
         return False
 
 
@@ -101,7 +107,10 @@ def _por_smtp(assunto, corpo, para, remetente, responder_para=None):
             s.send_message(msg)
         return True
     except Exception as exc:
-        print("[--] SMTP falhou: %s" % str(exc)[:160])
+        global ULTIMO_ERRO
+        ULTIMO_ERRO = "SMTP %s:%s -> %s: %s" % (host, porta, type(exc).__name__,
+                                                str(exc)[:200])
+        print("[--] %s" % ULTIMO_ERRO)
         return False
 
 

@@ -54,6 +54,33 @@ def foto(nome):
                     headers={"Cache-Control": "private, max-age=3600"})
 
 
+@bp.route("/saude/rede")
+def saude_rede():
+    """Da para alcancar o servidor de e-mail daqui?
+
+    Existe porque o alerta falhava em silencio e eu nao tenho o painel da
+    hospedagem para ler o log. So abre o socket e fecha: nao manda e-mail,
+    nao usa senha, nao revela nada.
+    """
+    import socket
+    from rep_campo.infra import email as mod_email
+    host = mod_email.conf("SMTP_HOST") or "smtp.gmail.com"
+    saida = {"host": host}
+    for porta in (587, 465, 2525):
+        try:
+            s = socket.create_connection((host, porta), timeout=6)
+            s.close()
+            saida["porta_%d" % porta] = "abre"
+        except Exception as exc:
+            saida["porta_%d" % porta] = "%s: %s" % (type(exc).__name__, str(exc)[:80])
+    try:
+        socket.create_connection(("api.resend.com", 443), timeout=6).close()
+        saida["resend_443"] = "abre"
+    except Exception as exc:
+        saida["resend_443"] = "%s: %s" % (type(exc).__name__, str(exc)[:80])
+    return jsonify(saida), 200, {"Cache-Control": "no-store"}
+
+
 @bp.route("/ping")
 def ping():
     """Sonda de rede do app. Nao toca no banco: a pergunta e so se ha rede."""
