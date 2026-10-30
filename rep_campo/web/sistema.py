@@ -8,7 +8,7 @@ from rep_campo.dominio import catalogos as C
 from rep_campo.infra import blob, db as dbmod
 from rep_campo.infra import repositorios as repo
 from rep_campo.infra.relogio import agora
-from rep_campo.web.acesso import login_obrigatorio
+from rep_campo.web.acesso import admin_obrigatorio, login_obrigatorio
 
 bp = Blueprint("sistema", __name__)
 
@@ -55,12 +55,14 @@ def foto(nome):
 
 
 @bp.route("/saude/rede")
+@admin_obrigatorio
 def saude_rede():
     """Da para alcancar o servidor de e-mail daqui?
 
-    Existe porque o alerta falhava em silencio e eu nao tenho o painel da
-    hospedagem para ler o log. So abre o socket e fecha: nao manda e-mail,
-    nao usa senha, nao revela nada.
+    Nasceu publica, para diagnosticar o alerta que falhava em silencio sem eu
+    ter o painel da hospedagem. Agora e so do admin: ela mostra a configuracao
+    (host, usuario, destinatarios) e tenta um login a cada chamada - de porta
+    aberta, serviria para alguem mapear isso ou irritar o Google.
     """
     import socket
     from rep_campo.infra import email as mod_email
