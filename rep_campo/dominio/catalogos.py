@@ -72,6 +72,12 @@ EMAIL_POR_LOGIN = {
     "marcia": "marcia.prado@emvidros.com.br",
 }
 
+# WhatsApp de quem abre a ocorrencia. Quem corrige o cadastro precisa avisar
+# depois que fez - e um e-mail de volta nem sempre e lido na hora. So digitos,
+# com DDI 55. Login sem numero aqui simplesmente nao leva o link.
+TELEFONE_POR_LOGIN = {
+}
+
 MUNICIPIOS_MIGRACAO = [
     "Santa Ines/MA", "Ze Doca/MA", "Bom Jardim/MA", "Governador Newton Belo/MA",
     "Moncao/MA", "Igarape do Meio/MA", "Pindare-Mirim/MA", "Pio XII/MA",

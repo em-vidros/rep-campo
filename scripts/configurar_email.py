@@ -19,7 +19,8 @@ from rep_campo.config import carregar_env
 
 SEGREDOS = ("SMTP_SENHA", "RESEND_API_KEY")
 ACEITAS = ("SMTP_HOST", "SMTP_PORT", "SMTP_USUARIO", "SMTP_SENHA",
-           "EMAIL_REMETENTE", "ALERTA_CADASTRO_PARA", "RESEND_API_KEY")
+           "EMAIL_REMETENTE", "ALERTA_CADASTRO_PARA", "RESEND_API_KEY",
+           "ALERTA_CADASTRO_COPIA", "ALERTA_CADASTRO_COPIA_ATE")
 
 
 def mascarar(chave, valor):

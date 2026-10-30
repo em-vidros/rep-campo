@@ -36,6 +36,28 @@ def avisar(texto):
     return enviado
 
 
+def com_copia_temporaria(para, hoje=None):
+    """Acrescenta a copia enquanto ela nao venceu.
+
+    O gerente quis acompanhar os primeiros meses e sair da copia depois. Posto
+    como data no proprio sistema em vez de lembrete: no dia seguinte ao prazo
+    o nome simplesmente para de entrar, sem ninguem precisar lembrar.
+    """
+    from datetime import datetime, timezone, timedelta
+    from rep_campo.infra import email as mod_email
+    copia = mod_email.conf("ALERTA_CADASTRO_COPIA")
+    ate = mod_email.conf("ALERTA_CADASTRO_COPIA_ATE")
+    if not copia or not ate:
+        return para
+    if hoje is None:
+        # -03: o corte e pela data daqui, nao pela de Londres
+        hoje = (datetime.now(timezone.utc) - timedelta(hours=3)).date().isoformat()
+    if hoje > ate:
+        return para
+    extras = [e.strip() for e in copia.replace(";", ",").split(",") if e.strip()]
+    return para + [e for e in extras if e not in para]
+
+
 def _registrar(ocorrencia, para, ok, erro):
     """Guarda no banco se o aviso saiu. Falha de e-mail era invisivel: virava
     um print no log da hospedagem, que eu nao alcanco."""
@@ -76,6 +98,12 @@ def alertar_cadastro(dados):
                 dados.get("o_que_mudou") or "cadastro",
                 dados.get("cliente") or "cliente")
         linhas = [
+            "NAO RESPONDA ESTE E-MAIL - ele sai de uma caixa automatica e a",
+            "resposta nao chega em ninguem. Para avisar que ja corrigiu, use o",
+            "WhatsApp do representante, logo abaixo.",
+            "",
+            "-----------------------------------------------------------------",
+            "",
             "Correcao de cadastro aberta pelo representante.",
             "",
             "Ocorrencia: %s" % (dados.get("numero") or "-"),
@@ -83,7 +111,9 @@ def alertar_cadastro(dados):
                                          dados.get("cliente_codigo") or "-"),
             "Municipio:  %s" % (dados.get("municipio") or "-"),
             "O que mudou: %s" % (dados.get("o_que_mudou") or "-"),
-            "Aberta por: %s" % (dados.get("aberta_por") or "-"),
+            "",
+            "AVISE ESTA PESSOA QUANDO A CORRECAO ESTIVER FEITA:",
+            "  %s" % (dados.get("aberta_por") or "-"),
             "",
             dados.get("descricao") or "",
             "",
@@ -96,8 +126,18 @@ def alertar_cadastro(dados):
             linhas.insert(7, "NAO CORRIJA AINDA: o representante foi procurar o "
                              "endereco novo e vai retornar com o desfecho.")
         from rep_campo.dominio import catalogos as C
-        responder = C.EMAIL_POR_LOGIN.get((dados.get("login") or "").lower())
-        para = mod_email.destinatarios("ALERTA_CADASTRO_PARA")
+        login = (dados.get("login") or "").lower()
+        responder = C.EMAIL_POR_LOGIN.get(login)
+        fone = C.TELEFONE_POR_LOGIN.get(login)
+        contato = linhas.index("  %s" % (dados.get("aberta_por") or "-")) + 1
+        if fone:
+            bonito = "(%s) %s-%s" % (fone[2:4], fone[4:-4], fone[-4:])
+            linhas.insert(contato, "  WhatsApp: %s  ->  https://wa.me/%s" % (bonito, fone))
+            contato += 1
+        if responder:
+            linhas.insert(contato, "  E-mail: %s" % responder)
+        para = com_copia_temporaria(
+            mod_email.destinatarios("ALERTA_CADASTRO_PARA"))
         mod_email.ULTIMO_ERRO = ""
         ok = mod_email.enviar(assunto, "\n".join(linhas), para,
                               responder_para=responder)
