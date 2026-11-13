@@ -784,3 +784,27 @@ def numeros_do_boletim(db, dia, inicio_semana):
           FROM ocorrencias WHERE setor = 'Cadastro'""").fetchone()
     return {"reps": linhas, "cadastro_abertas": pend["abertas"],
             "buscas_endereco": pend["buscas"]}
+
+
+def fichas_do_dia(db, dia, limite=12):
+    """O que foi registrado hoje, para o resumo contar o que aconteceu.
+
+    O numero diz se trabalharam; so o relato diz o que encontraram. Com o
+    volume atual (0 a 13 por dia) listar e mais honesto do que resumir.
+    """
+    local = "(recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date"
+    return [dict(r) for r in db.execute("""
+        SELECT usuario_login, tipo, cliente_nome, municipio, relato,
+               ocorrencia_num, exp_nota,
+               COALESCE(extra_json,'') LIKE '%%"oportunidade": "sim"%%' AS oportunidade,
+               COALESCE(extra_json,'') LIKE '%%"risco": "sim"%%' AS risco
+          FROM fichas WHERE {local} = %s
+         ORDER BY recebido_em
+         LIMIT %s
+    """.replace("{local}", local), (dia, limite))]
+
+
+def contar_fichas_do_dia(db, dia):
+    local = "(recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date"
+    return db.execute("SELECT COUNT(*) n FROM fichas WHERE %s = %%s"
+                      % local, (dia,)).fetchone()["n"]

@@ -24,6 +24,14 @@ def _como_chamam(nome, login):
     return partes[0] if partes else "?"
 
 
+def _corta(texto, n):
+    """Corta na palavra, nao no meio dela."""
+    if len(texto) <= n:
+        return texto
+    pedaco = texto[:n].rsplit(" ", 1)[0]
+    return (pedaco or texto[:n]) + "..."
+
+
 def _pct(parte, total):
     return round(100.0 * parte / total) if total else None
 
@@ -82,6 +90,34 @@ def montar(dia, dados):
             linhas.append("relato medio        %d caracteres"
                           % (sum(medios) // len(medios)))
 
+    fichas = dados.get("fichas_do_dia") or []
+    if fichas:
+        linhas.append("")
+        linhas.append("<b>O QUE ACONTECEU HOJE</b>")
+        for f in fichas:
+            marcas = ""
+            if f.get("oportunidade"):
+                marcas += " 💰"
+            if f.get("risco"):
+                marcas += " ⚠️"
+            if f.get("ocorrencia_num"):
+                marcas += " 🔧"
+            if f.get("exp_nota") is not None and int(f["exp_nota"]) <= 6:
+                marcas += " 👎"
+            onde = f.get("municipio")
+            cabeca = "• %s · %s%s%s" % (
+                _esc(_como_chamam(None, f.get("usuario_login"))),
+                _esc(f.get("cliente_nome") or "?"),
+                " (%s)" % _esc(onde) if onde else "", marcas)
+            linhas.append(cabeca)
+            relato = " ".join(str(f.get("relato") or "").split())
+            if relato:
+                linhas.append("  <i>%s</i>" % _esc(_corta(relato, 110)))
+        sobra = int(dados.get("total_do_dia") or 0) - len(fichas)
+        if sobra > 0:
+            linhas.append("  <i>+%d ficha%s no painel</i>"
+                          % (sobra, "s" if sobra > 1 else ""))
+
     pend = []
     if dados.get("cadastro_abertas"):
         pend.append("%d correcao de cadastro em aberto" % dados["cadastro_abertas"]
@@ -102,4 +138,17 @@ def montar(dia, dados):
 
     linhas.append("")
     linhas.append('<a href="%s">abrir o painel</a>' % PAINEL)
-    return "\n".join(linhas)
+    return _cabe_no_telegram("\n".join(linhas))
+
+
+LIMITE_TELEGRAM = 4096
+
+
+def _cabe_no_telegram(texto):
+    """Acima de 4096 o Telegram recusa a mensagem inteira - e o resumo do dia
+    sumiria justamente no dia mais movimentado."""
+    if len(texto) <= LIMITE_TELEGRAM:
+        return texto
+    rodape = '\n\n<i>(resumo cortado)</i>\n<a href="%s">abrir o painel</a>' % PAINEL
+    corte = texto[:LIMITE_TELEGRAM - len(rodape)]
+    return corte.rsplit("\n", 1)[0] + rodape

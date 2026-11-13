@@ -15,6 +15,8 @@ def montar(db, dia=None):
     dia = dia or hoje_sp()
     segunda = dia - timedelta(days=dia.weekday())
     dados = repo.numeros_do_boletim(db, dia.isoformat(), segunda.isoformat())
+    dados["fichas_do_dia"] = repo.fichas_do_dia(db, dia.isoformat())
+    dados["total_do_dia"] = repo.contar_fichas_do_dia(db, dia.isoformat())
     return dia, dom.montar(dia, dados)
 
 
