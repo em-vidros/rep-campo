@@ -21,6 +21,7 @@ GUIA_REVISAO.html
 *.pdf
 
 # backups locais
+backups/
 .*.bak_*
 *.bak_*
 
