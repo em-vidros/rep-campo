@@ -4,11 +4,18 @@ import json
 import os
 import urllib.request
 
+# Por que o ultimo Telegram falhou - mesmo motivo do e-mail: log de hospedagem
+# que eu nao alcanco nao serve de diagnostico.
+ULTIMO_ERRO_TG = ""
+
 
 def avisar(texto):
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    chat = os.environ.get("TELEGRAM_CHAT_ID")
-    webhook = os.environ.get("SYNC_ALERTA_WEBHOOK")
+    # mesma regra do e-mail: ambiente primeiro, banco depois. Sem acesso ao
+    # painel da hospedagem, a configuracao precisa caber no banco.
+    from rep_campo.infra import email as mod_email
+    token = mod_email.conf("TELEGRAM_BOT_TOKEN")
+    chat = mod_email.conf("TELEGRAM_CHAT_ID")
+    webhook = mod_email.conf("SYNC_ALERTA_WEBHOOK")
     enviado = False
     if token and chat:
         try:
@@ -20,7 +27,9 @@ def avisar(texto):
             urllib.request.urlopen(req, timeout=20).read()
             enviado = True
         except Exception as exc:
-            print("[--] Telegram falhou: %s" % str(exc)[:120])
+            global ULTIMO_ERRO_TG
+            ULTIMO_ERRO_TG = "Telegram: %s" % str(exc)[:200]
+            print("[--] %s" % ULTIMO_ERRO_TG)
     if not enviado and webhook:
         try:
             req = urllib.request.Request(

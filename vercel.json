@@ -6,6 +6,15 @@
     }
   },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api/index" }
+    {
+      "source": "/(.*)",
+      "destination": "/api/index"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/boletim-diario",
+      "schedule": "0 22 * * *"
+    }
   ]
 }

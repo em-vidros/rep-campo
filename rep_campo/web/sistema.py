@@ -2,13 +2,14 @@
 """Páginas públicas, foto e saúde. Borda fina: sem SQL aqui."""
 import os
 
-from flask import Blueprint, Response, current_app, jsonify, render_template, send_from_directory, session
+from flask import Blueprint, Response, current_app, jsonify, render_template, request, send_from_directory, session
 
 from rep_campo.dominio import catalogos as C
 from rep_campo.infra import blob, db as dbmod
 from rep_campo.infra import repositorios as repo
 from rep_campo.infra.relogio import agora
-from rep_campo.web.acesso import admin_obrigatorio, login_obrigatorio
+from rep_campo.web.acesso import (admin_obrigatorio, eh_admin,
+                                  gestor_obrigatorio, login_obrigatorio)
 
 bp = Blueprint("sistema", __name__)
 
@@ -99,6 +100,33 @@ def saude_rede():
     except Exception as exc:
         saida["login_smtp"] = "%s: %s" % (type(exc).__name__, str(exc)[:200])
     return jsonify(saida), 200, {"Cache-Control": "no-store"}
+
+
+@bp.route("/api/boletim-diario", methods=["GET", "POST"])
+def boletim_diario():
+    """Resumo do dia no Telegram. A Vercel chama por GET, uma vez ao dia.
+
+    GET e idempotente de proposito: so manda se ainda nao mandou hoje. A rota
+    nao tem segredo (nao da para guardar um no repositorio) e um GET pode ser
+    disparado por qualquer coisa - a trava por dia e o que impede isso de virar
+    spam. Reenviar o mesmo dia exige POST e ser admin.
+    """
+    from rep_campo.aplicacao import boletim as app_boletim
+    db = dbmod.get_db()
+    forcar = (request.method == "POST"
+              and request.args.get("forcar") == "1"
+              and eh_admin())
+    saida = app_boletim.enviar(db, forcar=forcar)
+    return jsonify(saida), 200, {"Cache-Control": "no-store"}
+
+
+@bp.route("/api/boletim-diario/previa")
+@gestor_obrigatorio
+def boletim_previa():
+    """Ver o texto sem mandar nada."""
+    from rep_campo.aplicacao import boletim as app_boletim
+    dia, texto = app_boletim.montar(dbmod.get_db())
+    return jsonify({"dia": dia.isoformat(), "texto": texto})
 
 
 @bp.route("/ping")

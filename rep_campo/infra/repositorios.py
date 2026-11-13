@@ -746,3 +746,41 @@ def contagem_meta(db, usuario_login, hoje_sp, inicio_semana_sp):
           FROM fichas WHERE 1=1 %s""" % filtro,
         [hoje_sp, inicio_semana_sp, inicio_semana_sp] + args).fetchone()
     return dict(r)
+
+
+# --- boletim diario -------------------------------------------------------
+
+def numeros_do_boletim(db, dia, inicio_semana):
+    """Quantidade e qualidade por representante, no dia e na semana.
+
+    Tudo em horario de Sao Paulo: `recebido_em` e UTC, e contar por dia em UTC
+    jogaria a ficha das 21h para o dia seguinte.
+    """
+    local = "(f.recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date"
+    linhas = [dict(r) for r in db.execute("""
+        SELECT u.login, u.nome, u.base,
+               COUNT(f.uuid) FILTER (WHERE {local} = %s) AS hoje,
+               COUNT(f.uuid) FILTER (WHERE {local} >= %s) AS semana,
+               COUNT(DISTINCT f.cliente_nome) FILTER (WHERE {local} >= %s)
+                   AS clientes_semana,
+               COUNT(f.uuid) FILTER (WHERE {local} >= %s AND f.lat IS NOT NULL)
+                   AS com_gps,
+               COUNT(f.uuid) FILTER (WHERE {local} >= %s
+                   AND COALESCE(TRIM(f.proximo_passo),'') <> '') AS com_passo,
+               ROUND(AVG(LENGTH(COALESCE(f.relato,''))) FILTER (WHERE {local} >= %s))
+                   AS relato_medio,
+               MAX({local}) AS ultima_ficha
+          FROM usuarios u
+          LEFT JOIN fichas f ON f.usuario_login = u.login
+         WHERE u.papel = 'rep' AND u.ativo = 1
+         GROUP BY u.login, u.nome, u.base
+         ORDER BY u.nome
+    """.replace("{local}", local), (dia, inicio_semana, inicio_semana,
+                                    inicio_semana, inicio_semana, inicio_semana))]
+    pend = db.execute("""
+        SELECT COUNT(*) FILTER (WHERE status <> 'resolvida') AS abertas,
+               COUNT(*) FILTER (WHERE status <> 'resolvida'
+                   AND descricao LIKE '%%NAO ESTA MAIS NESTE ENDERECO%%') AS buscas
+          FROM ocorrencias WHERE setor = 'Cadastro'""").fetchone()
+    return {"reps": linhas, "cadastro_abertas": pend["abertas"],
+            "buscas_endereco": pend["buscas"]}
