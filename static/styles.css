@@ -371,3 +371,13 @@ legend{font-size:.85rem;font-weight:700;color:var(--verde);padding:0 6px}
 .caixa-item:has(input:checked){border-color:#1b6b4f;background:#f2f8f5}
 .caixa-item.caixa-alerta{border-color:#e0b878;background:#fdf6ea;margin-top:6px}
 .caixa-item.caixa-alerta:has(input:checked){border-color:#a86a00;background:#fbecd2}
+
+/* aviso permanente de que o dia e reportado aos gestores */
+.faixa-supervisao{margin:10px 12px 0;padding:11px 13px;border-radius:10px;
+  background:#f1f4f3;border:1px solid #dfe5e2;font-size:.85rem;color:#3d4a44;
+  line-height:1.45}
+.faixa-supervisao b{color:#0f3d2e}
+.faixa-supervisao .fs-topo{font-weight:600;color:#0f3d2e;margin-bottom:3px}
+.faixa-supervisao .fs-num{margin-top:5px;padding-top:5px;
+  border-top:1px solid #e3e8e6}
+.faixa-supervisao .fs-zero b{color:#a86a00}

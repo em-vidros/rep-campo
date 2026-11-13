@@ -248,6 +248,27 @@ function prepararCadastro() {
   ajustarCadastro();
 }
 
+/* O representante ve, toda vez que abre, que o dia dele e reportado - e ve o
+   MESMO numero que foi reportado. Supervisao que ele nao consegue conferir
+   vira desconfianca. De proposito nao e notificacao: aviso as 19h chega
+   quando ele ja nao pode fazer nada. */
+function desenharSupervisao() {
+  const faixa = $('faixa-supervisao');
+  const s = CFG.supervisao;
+  if (!faixa || !s) return;
+  const zero = !s.fichas;
+  const alvo = s.meta ? ` · meta ${s.meta}` : ' · dia sem meta';
+  faixa.innerHTML = `
+    <div class="fs-topo">Resumo diario para a gestao</div>
+    <div>Todo dia as ${esc(s.hora_envio)} os gestores comerciais recebem um
+         resumo do que voce registrou no app.</div>
+    <div class="fs-num${zero ? ' fs-zero' : ''}">
+      Em ${esc(s.dia)} eles receberam: <b>${s.fichas} ficha${s.fichas === 1 ? '' : 's'}</b>${alvo}${
+        s.clientes ? ` · ${s.clientes} cliente${s.clientes === 1 ? '' : 's'}` : ''}
+    </div>`;
+  faixa.classList.remove('oculto');
+}
+
 function montarCampos(tipo) {
   const box = $('campos-tipo');
   box.innerHTML = '';
@@ -1340,6 +1361,7 @@ async function carregarCfg() {
     if (c && c.valor) CFG = c.valor;
   }
   pintarRecadosGerais();
+  desenharSupervisao();
   $('lista-municipios').innerHTML = (CFG.municipios || [])
     .map(m => `<option value="${esc(m)}">`).join('');
 

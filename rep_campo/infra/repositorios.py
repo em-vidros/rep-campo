@@ -808,3 +808,21 @@ def contar_fichas_do_dia(db, dia):
     local = "(recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date"
     return db.execute("SELECT COUNT(*) n FROM fichas WHERE %s = %%s"
                       % local, (dia,)).fetchone()["n"]
+
+
+def supervisao_do_rep(db, login, dia):
+    """O que os gestores receberam sobre este representante no dia indicado.
+
+    O representante ve o mesmo numero que foi reportado - nao uma versao dele.
+    Supervisao que o supervisionado nao consegue conferir vira desconfianca.
+    """
+    local = "(recebido_em::timestamptz AT TIME ZONE 'America/Sao_Paulo')::date"
+    r = db.execute("""
+        SELECT COUNT(*) AS fichas,
+               COUNT(DISTINCT cliente_nome) AS clientes,
+               COUNT(*) FILTER (WHERE COALESCE(TRIM(proximo_passo),'') <> '')
+                   AS com_passo
+          FROM fichas WHERE usuario_login = %%s AND %s = %%s
+    """ % local, (login, dia)).fetchone()
+    return {"fichas": r["fichas"], "clientes": r["clientes"],
+            "com_passo": r["com_passo"]}

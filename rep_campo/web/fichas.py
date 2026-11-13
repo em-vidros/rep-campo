@@ -18,6 +18,24 @@ from rep_campo.web.acesso import base_do_rep, eh_gestor, login_obrigatorio
 bp = Blueprint("fichas", __name__)
 
 
+def _supervisao(db):
+    """O bloco que diz ao representante que o dia dele e reportado.
+
+    Fica na tela, sempre - nao e notificacao. Aviso que toca as 19h chega
+    quando ele ja nao pode fazer nada; de manha, com o numero de ontem, ele
+    ainda consegue recuperar o dia.
+    """
+    from datetime import timedelta
+    from rep_campo.aplicacao.boletim import hoje_sp
+    from rep_campo.dominio.metas import meta_do_dia
+    ontem = hoje_sp() - timedelta(days=1)
+    d = repo.supervisao_do_rep(db, session["login"], ontem.isoformat())
+    d["dia"] = ontem.strftime("%d/%m")
+    d["meta"] = meta_do_dia(ontem)
+    d["hora_envio"] = "19h"
+    return d
+
+
 @bp.route("/api/bootstrap")
 @login_obrigatorio
 def bootstrap():
@@ -31,6 +49,7 @@ def bootstrap():
         # vai no bootstrap de proposito: o service worker guarda esta resposta,
         # entao o representante le os recados mesmo sem sinal na estrada
         "recados": app_recados.para_o_app(db, session["login"]),
+        "supervisao": _supervisao(db) if not eh_gestor() else None,
         "clientes": clientes,
         "municipios": municipios,
         "tipos": C.TIPOS,
